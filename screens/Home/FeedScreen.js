@@ -2,10 +2,10 @@ import React, { useEffect, useState } from 'react';
 import {
   View, Text, FlatList, Image, TouchableOpacity,
   StyleSheet, Dimensions, ActivityIndicator, Alert,
-  Modal, TextInput, KeyboardAvoidingView, Platform
+  Modal, TextInput, KeyboardAvoidingView, Platform, Share
 } from 'react-native';
 import { Video } from 'expo-av';
-import { Ionicons, Feather } from '@expo/vector-icons';
+import { Ionicons, Feather, MaterialIcons } from '@expo/vector-icons';
 import * as Animatable from 'react-native-animatable';
 import { StatusBar } from 'expo-status-bar';
 import axios from 'axios';
@@ -14,6 +14,7 @@ import { useSelector } from 'react-redux';
 const { width } = Dimensions.get('window');
 const BASE_URL = 'http://192.168.1.3:8080/api/posts';
 const COMMENTS_URL = 'http://192.168.1.3:8080/api/comments';
+const BOOKMARKS_URL = 'http://192.168.1.3:8080/api/bookmarks';
 
 function ReadMoreText({ text, numberOfLines = 3 }) {
   const [expanded, setExpanded] = useState(false);
@@ -69,7 +70,6 @@ function CommentsModal({ visible, onClose, postId, token }) {
         }
       });
 
-      // Add the new comment to the list
       setComments(prev => [res.data, ...prev]);
       setNewComment('');
     } catch (err) {
@@ -86,7 +86,6 @@ function CommentsModal({ visible, onClose, postId, token }) {
         headers: { Authorization: `Bearer ${token}` }
       });
       
-      // Remove comment from list
       setComments(prev => prev.filter(comment => comment.id !== commentId));
     } catch (err) {
       console.error('Delete comment error:', err.message);
@@ -190,31 +189,46 @@ export default function FeedScreen() {
   }, []);
 
   const fetchPosts = async () => {
-    try {
-      setLoading(true);
-      const res = await axios.get(`${BASE_URL}`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      setPosts(res.data.content);
-    } catch (err) {
-      console.error('Fetch posts error:', err.message);
-      Alert.alert('Error', 'Failed to load posts');
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  };
+  try {
+    setLoading(true);
+    
+    // Fetch posts and bookmarks in parallel
+    const [postsRes, bookmarksRes] = await Promise.all([
+      axios.get(`${BASE_URL}`, { 
+        headers: { Authorization: `Bearer ${token}` } 
+      }),
+      axios.get(`${BOOKMARKS_URL}/my-bookmarks`, { 
+        headers: { Authorization: `Bearer ${token}` } 
+      })
+    ]);
+
+    // Create a Set of bookmarked post IDs for O(1) lookups
+    const bookmarkedPostIds = new Set(
+      bookmarksRes.data.map(post => post.id)
+    );
+
+    // Merge bookmark status into posts
+    const postsWithBookmarks = postsRes.data.content.map(post => ({
+      ...post,
+      isBookmarkedByCurrentUser: bookmarkedPostIds.has(post.id)
+    }));
+
+    setPosts(postsWithBookmarks);
+  } catch (err) {
+    console.error('Fetch error:', err);
+    Alert.alert('Error', 'Failed to load posts');
+  } finally {
+    setLoading(false);
+    setRefreshing(false);
+  }
+};
 
   const handleLike = async (postId) => {
     try {
-      // Find the current post to get its current like status
-      const currentPost = posts.find(post => post.id === postId);
-      
       const res = await axios.post(`${BASE_URL}/${postId}/like`, {}, {
         headers: { Authorization: `Bearer ${token}` }
       });
 
-      // Update the post with the response from backend
       setPosts(prev =>
         prev.map(post =>
           post.id === postId
@@ -232,6 +246,81 @@ export default function FeedScreen() {
     }
   };
 
+  const handleBookmark = async (postId) => {
+  try {
+    const res = await axios.post(`${BOOKMARKS_URL}/${postId}`, {}, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+
+        console.log('Bookmark response:', res.data);
+
+
+       const isBookmarked = res.data.bookmarked;
+
+    setPosts(prev =>
+      prev.map(post =>
+        post.id === postId
+          ? {
+              ...post,
+              isBookmarkedByCurrentUser: isBookmarked
+            }
+          : post
+      )
+    );
+
+    // ✅ Fix this part
+    if (isBookmarked) {
+      Alert.alert('Bookmarked!', 'Post added to your bookmarks');
+    } else {
+      Alert.alert('Removed', 'Post removed from bookmarks');
+    }
+  } catch (err) {
+    console.error('Bookmark error:', err.message);
+    Alert.alert('Error', 'Failed to bookmark post');
+  }
+};
+
+
+  const handleShare = async (post) => {
+    try {
+      let shareMessage = `Check out this post by ${post.username}!\n\n`;
+      
+      if (post.content) {
+        shareMessage += `"${post.content}"\n\n`;
+      }
+      
+      shareMessage += `Shared from Social App`;
+
+      const shareOptions = {
+        message: shareMessage,
+        title: 'Share Post',
+      };
+
+      // If there's an image, you can add URL (if your images are publicly accessible)
+      if (post.imageUrl) {
+        shareOptions.url = post.imageUrl;
+      }
+
+      const result = await Share.share(shareOptions);
+
+      if (result.action === Share.sharedAction) {
+        if (result.activityType) {
+          // Shared with activity type of result.activityType
+          console.log('Shared with:', result.activityType);
+        } else {
+          // Shared
+          console.log('Post shared successfully');
+        }
+      } else if (result.action === Share.dismissedAction) {
+        // Dismissed
+        console.log('Share dismissed');
+      }
+    } catch (error) {
+      console.error('Share error:', error.message);
+      Alert.alert('Error', 'Failed to share post');
+    }
+  };
+
   const openComments = (postId) => {
     setCommentsModal({ visible: true, postId });
   };
@@ -244,7 +333,20 @@ export default function FeedScreen() {
     <Animatable.View animation="slideInUp" delay={index * 150} style={styles.card}>
       <View style={styles.userRow}>
         <Image source={{ uri: `https://ui-avatars.com/api/?name=${item.username}` }} style={styles.avatar} />
-        <Text style={styles.username}>{item.username}</Text>
+        <View style={styles.userInfo}>
+          <Text style={styles.username}>{item.username}</Text>
+          <Text style={styles.postTime}>{new Date(item.createdAt).toLocaleDateString()}</Text>
+        </View>
+        <TouchableOpacity 
+          onPress={() => handleBookmark(item.id)}
+          style={styles.bookmarkBtn}
+        >
+          <Ionicons 
+            name={item.isBookmarkedByCurrentUser ? "bookmark" : "bookmark-outline"} 
+            size={20} 
+            color={item.isBookmarkedByCurrentUser ? "#1e90ff" : "#666"} 
+          />
+        </TouchableOpacity>
       </View>
 
       <View style={styles.contentArea}>
@@ -265,7 +367,10 @@ export default function FeedScreen() {
         )}
         {item.pdfUrl && (
           <TouchableOpacity onPress={() => Alert.alert('PDF tapped', item.pdfUrl)}>
-            <Text style={{ color: 'blue', marginTop: 6 }}>📄 View attached PDF</Text>
+            <View style={styles.pdfContainer}>
+              <MaterialIcons name="picture-as-pdf" size={24} color="#ff4444" />
+              <Text style={styles.pdfText}>View attached PDF</Text>
+            </View>
           </TouchableOpacity>
         )}
       </View>
@@ -280,7 +385,7 @@ export default function FeedScreen() {
             size={20} 
             color={item.isLikedByCurrentUser ? "#ff3040" : "#444"} 
           />
-          <Text style={styles.actionText}>{item.likes} Like{item.likes !== 1 ? 's' : ''}</Text>
+          <Text style={styles.actionText}>{item.likes}</Text>
         </TouchableOpacity>
         
         <TouchableOpacity 
@@ -291,7 +396,10 @@ export default function FeedScreen() {
           <Text style={styles.actionText}>Comment</Text>
         </TouchableOpacity>
         
-        <TouchableOpacity style={styles.actionBtn}>
+        <TouchableOpacity 
+          style={styles.actionBtn}
+          onPress={() => handleShare(item)}
+        >
           <Feather name="share" size={20} color="#444" />
           <Text style={styles.actionText}>Share</Text>
         </TouchableOpacity>
@@ -353,10 +461,21 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     marginRight: 10,
   },
+  userInfo: {
+    flex: 1,
+  },
   username: {
     fontSize: 16,
     fontWeight: 'bold',
     color: '#333',
+  },
+  postTime: {
+    fontSize: 12,
+    color: '#999',
+    marginTop: 2,
+  },
+  bookmarkBtn: {
+    padding: 4,
   },
   contentArea: {
     marginVertical: 10,
@@ -364,6 +483,7 @@ const styles = StyleSheet.create({
   textContent: {
     fontSize: 15,
     color: '#555',
+    lineHeight: 20,
   },
   readMoreText: {
     color: '#1e90ff',
@@ -374,27 +494,42 @@ const styles = StyleSheet.create({
     width: '100%',
     height: 200,
     borderRadius: 12,
-    marginTop: 5,
+    marginTop: 8,
   },
   video: {
     width: '100%',
     height: 200,
     borderRadius: 12,
-    marginTop: 5,
+    marginTop: 8,
+  },
+  pdfContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f8f9fa',
+    padding: 12,
+    borderRadius: 8,
+    marginTop: 8,
+  },
+  pdfText: {
+    marginLeft: 8,
+    color: '#333',
+    fontSize: 14,
   },
   actionsRow: {
     flexDirection: 'row',
     justifyContent: 'space-around',
     borderTopWidth: 1,
     borderTopColor: '#eee',
-    paddingTop: 10,
+    paddingTop: 12,
+    marginTop: 8,
   },
   actionBtn: {
     flexDirection: 'row',
     alignItems: 'center',
+    padding: 8,
   },
   actionText: {
-    marginLeft: 6,
+    marginLeft: 4,
     color: '#444',
     fontSize: 14,
   },
@@ -470,7 +605,7 @@ const styles = StyleSheet.create({
     borderColor: '#ddd',
     borderRadius: 20,
     paddingHorizontal: 16,
-    paddingVertical: 8,
+    paddingVertical: 10,
     maxHeight: 100,
     fontSize: 14,
   },
