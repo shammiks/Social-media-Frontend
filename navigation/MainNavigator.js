@@ -6,6 +6,7 @@ import CreatePostScreen from "@/screens/Post/CreatePostScreen";
 import ProfileScreen from "@/screens/Profile/ProfileScreen";
 import LoginScreen from "@/screens/Auth/LoginScreen";
 import RegisterScreen from "@/screens/Auth/RegisterScreen";
+import UserProfileScreen from "@/screens/Profile/UserProfileScreen";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { Ionicons } from "@expo/vector-icons";
 import { useSelector } from "react-redux";
@@ -58,13 +59,29 @@ const BottomTabNavigator = () => {
   );
 };
 
+const AuthenticatedStack = () => {
+  return (
+    <Stack.Navigator screenOptions={{ headerShown: false }}>
+      <Stack.Screen name="MainTabs" component={BottomTabNavigator} />
+      <Stack.Screen 
+        name="ShowProfile" 
+        component={UserProfileScreen}
+        options={{ 
+          presentation: 'modal',
+          gestureEnabled: true 
+        }}
+      />
+    </Stack.Navigator>
+  );
+};
+
 export default function MainNavigator() {
   const isAuthenticated = useSelector((state) => state.auth.isAuthenticated);
 
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
       {isAuthenticated ? (
-        <Stack.Screen name="Main" component={BottomTabNavigator} />
+        <Stack.Screen name="Authenticated" component={AuthenticatedStack} />
       ) : (
         <>
           <Stack.Screen name="Login" component={LoginScreen} />

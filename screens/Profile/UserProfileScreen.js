@@ -1,24 +1,31 @@
 import React, { useEffect, useState } from 'react';
-import {
-  View, Text, FlatList, Image, TouchableOpacity,
-  StyleSheet, Dimensions, ActivityIndicator, Alert,
-  Modal, TextInput, KeyboardAvoidingView, Platform, Share
+import { 
+  View, 
+  Text, 
+  Image, 
+  TouchableOpacity, 
+  StyleSheet, 
+  ActivityIndicator, 
+  Alert,
+  FlatList,
+  RefreshControl,
+  TextInput,
+  Modal,
+  KeyboardAvoidingView,
+  Platform,
+  Share,
+  Dimensions
 } from 'react-native';
-import { Video } from 'expo-av';
-import { Ionicons, Feather, MaterialIcons } from '@expo/vector-icons';
-import * as Animatable from 'react-native-animatable';
-import { StatusBar } from 'expo-status-bar';
-import axios from 'axios';
 import { useSelector } from 'react-redux';
-import { useNavigation } from '@react-navigation/native';
+import axios from 'axios';
+import { Ionicons, Feather, MaterialIcons } from '@expo/vector-icons';
+import { Video } from 'expo-av';
+import * as Animatable from 'react-native-animatable';
 
 const { width } = Dimensions.get('window');
-const BASE_URL = 'http://192.168.1.3:8080/api/posts';
-const COMMENTS_URL = 'http://192.168.1.3:8080/api/comments';
-const BOOKMARKS_URL = 'http://192.168.1.3:8080/api/bookmarks';
 
+// ReadMoreText Component
 function ReadMoreText({ text, numberOfLines = 3 }) {
-  
   const [expanded, setExpanded] = useState(false);
   const toggleExpanded = () => setExpanded(!expanded);
   const shouldTrim = text?.length > 100;
@@ -37,11 +44,14 @@ function ReadMoreText({ text, numberOfLines = 3 }) {
   );
 }
 
+// Comments Modal Component
 function CommentsModal({ visible, onClose, postId, token }) {
   const [comments, setComments] = useState([]);
   const [newComment, setNewComment] = useState('');
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+
+  const COMMENTS_URL = 'http://192.168.1.3:8080/api/comments';
 
   const fetchComments = async () => {
     try {
@@ -179,57 +189,116 @@ function CommentsModal({ visible, onClose, postId, token }) {
   );
 }
 
-export default function FeedScreen() {
+const UserProfileScreen = ({ route, navigation }) => {
+  const { userId, username } = route.params;
+  const token = useSelector((state) => state.auth.token);
+  const currentUserId = useSelector((state) => state.auth.userId);
+  
+  const [profile, setProfile] = useState(null);
   const [posts, setPosts] = useState([]);
+  const [isFollowing, setIsFollowing] = useState(false);
+  const [followersCount, setFollowersCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState(null);
   const [commentsModal, setCommentsModal] = useState({ visible: false, postId: null });
-  const token = useSelector((state) => state.auth.token);
 
-  const navigation = useNavigation();
+  const API_BASE_URL = 'http://192.168.1.3:8080/api';
+  const POSTS_URL = 'http://192.168.1.3:8080/api/posts';
+  const BOOKMARKS_URL = 'http://192.168.1.3:8080/api/bookmarks';
 
-  useEffect(() => {
-    fetchPosts();
-  }, []);
-
-  const fetchPosts = async () => {
-  try {
-    setLoading(true);
-    
-    // Fetch posts and bookmarks in parallel
-    const [postsRes, bookmarksRes] = await Promise.all([
-      axios.get(`${BASE_URL}`, { 
-        headers: { Authorization: `Bearer ${token}` } 
-      }),
-      axios.get(`${BOOKMARKS_URL}/my-bookmarks`, { 
-        headers: { Authorization: `Bearer ${token}` } 
-      })
+  const handleAuthError = () => {
+    Alert.alert('Session Expired', 'Please log in again', [
+      { text: 'OK', onPress: () => navigation.navigate('Login') }
     ]);
+  };
 
-    // Create a Set of bookmarked post IDs for O(1) lookups
-    const bookmarkedPostIds = new Set(
-      bookmarksRes.data.map(post => post.id)
-    );
+  const fetchProfileData = async () => {
+    console.log("🔍 Debug: Fetching profile data...");
+    
+    if (!token) {
+      setError("Authentication required");
+      handleAuthError();
+      return;
+    }
 
-    // Merge bookmark status into posts
-    const postsWithBookmarks = postsRes.data.content.map(post => ({
-      ...post,
-      isBookmarkedByCurrentUser: bookmarkedPostIds.has(post.id)
-    }));
+    const headers = {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`
+    };
 
-    setPosts(postsWithBookmarks);
-  } catch (err) {
-    console.error('Fetch error:', err);
-    Alert.alert('Error', 'Failed to load posts');
-  } finally {
-    setLoading(false);
-    setRefreshing(false);
-  }
-};
+    try {
+      setError(null);
+      setLoading(true);
 
+      // Fetch profile
+      console.log("⏳ Attempting to fetch profile...");
+      const profileResponse = await axios.get(
+        userId 
+          ? `${API_BASE_URL}/users/${userId}`
+          : `${API_BASE_URL}/users/by-username/${username}`,
+        { headers }
+      );
+      
+      const profileData = profileResponse.data;
+      setProfile(profileData);
+      setFollowersCount(profileData.followersCount || 0);
+
+      // Fetch posts and bookmarks in parallel (like FeedScreen)
+      const [postsRes, bookmarksRes] = await Promise.all([
+        axios.get(`${POSTS_URL}/user/${profileData.id}`, { headers }),
+        axios.get(`${BOOKMARKS_URL}/my-bookmarks`, { headers })
+      ]);
+
+      // Create a Set of bookmarked post IDs for O(1) lookups
+      const bookmarkedPostIds = new Set(
+        bookmarksRes.data.map(post => post.id)
+      );
+
+      // Merge bookmark status into posts (exactly like FeedScreen)
+      const postsWithBookmarks = (postsRes.data.content || []).map(post => ({
+        ...post,
+        isBookmarkedByCurrentUser: bookmarkedPostIds.has(post.id)
+      }));
+
+      setPosts(postsWithBookmarks);
+
+      // Check follow status
+      if (currentUserId !== profileData.id) {
+        try {
+          const followStatusResponse = await axios.get(
+            `${API_BASE_URL}/follow/status/${profileData.id}`,
+            { headers }
+          );
+          setIsFollowing(followStatusResponse.data.isFollowing);
+        } catch (followError) {
+          console.warn("Follow status check failed:", followError.message);
+          setIsFollowing(false);
+        }
+      }
+
+    } catch (error) {
+      console.error("Request failed:", error.response?.data || error.message);
+      setError(error.message);
+      
+      if (error.response?.status === 401) {
+        handleAuthError();
+      } else {
+        Alert.alert(
+          "Error",
+          error.response?.data?.message || "Failed to load profile"
+        );
+      }
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  };
+
+  // Like functionality (exactly from FeedScreen)
   const handleLike = async (postId) => {
     try {
-      const res = await axios.post(`${BASE_URL}/${postId}/like`, {}, {
+      const res = await axios.post(`${POSTS_URL}/${postId}/like`, {}, {
         headers: { Authorization: `Bearer ${token}` }
       });
 
@@ -250,41 +319,40 @@ export default function FeedScreen() {
     }
   };
 
+  // Bookmark functionality (exactly from FeedScreen)
   const handleBookmark = async (postId) => {
-  try {
-    const res = await axios.post(`${BOOKMARKS_URL}/${postId}`, {}, {
-      headers: { Authorization: `Bearer ${token}` }
-    });
+    try {
+      const res = await axios.post(`${BOOKMARKS_URL}/${postId}`, {}, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
 
-        console.log('Bookmark response:', res.data);
+      console.log('Bookmark response:', res.data);
 
+      const isBookmarked = res.data.bookmarked;
 
-       const isBookmarked = res.data.bookmarked;
+      setPosts(prev =>
+        prev.map(post =>
+          post.id === postId
+            ? {
+                ...post,
+                isBookmarkedByCurrentUser: isBookmarked
+              }
+            : post
+        )
+      );
 
-    setPosts(prev =>
-      prev.map(post =>
-        post.id === postId
-          ? {
-              ...post,
-              isBookmarkedByCurrentUser: isBookmarked
-            }
-          : post
-      )
-    );
-
-    // ✅ Fix this part
-    if (isBookmarked) {
-      Alert.alert('Bookmarked!', 'Post added to your bookmarks');
-    } else {
-      Alert.alert('Removed', 'Post removed from bookmarks');
+      if (isBookmarked) {
+        Alert.alert('Bookmarked!', 'Post added to your bookmarks');
+      } else {
+        Alert.alert('Removed', 'Post removed from bookmarks');
+      }
+    } catch (err) {
+      console.error('Bookmark error:', err.message);
+      Alert.alert('Error', 'Failed to bookmark post');
     }
-  } catch (err) {
-    console.error('Bookmark error:', err.message);
-    Alert.alert('Error', 'Failed to bookmark post');
-  }
-};
+  };
 
-
+  // Share functionality (exactly from FeedScreen)
   const handleShare = async (post) => {
     try {
       let shareMessage = `Check out this post by ${post.username}!\n\n`;
@@ -300,7 +368,6 @@ export default function FeedScreen() {
         title: 'Share Post',
       };
 
-      // If there's an image, you can add URL (if your images are publicly accessible)
       if (post.imageUrl) {
         shareOptions.url = post.imageUrl;
       }
@@ -309,14 +376,11 @@ export default function FeedScreen() {
 
       if (result.action === Share.sharedAction) {
         if (result.activityType) {
-          // Shared with activity type of result.activityType
           console.log('Shared with:', result.activityType);
         } else {
-          // Shared
           console.log('Post shared successfully');
         }
       } else if (result.action === Share.dismissedAction) {
-        // Dismissed
         console.log('Share dismissed');
       }
     } catch (error) {
@@ -333,43 +397,69 @@ export default function FeedScreen() {
     setCommentsModal({ visible: false, postId: null });
   };
 
-  const renderPost = ({ item, index }) => (
-    
-    <Animatable.View animation="slideInUp" delay={index * 150} style={styles.card}>
-     <TouchableOpacity 
-  style={styles.userRow}
-  onPress={() => {
-    console.log('Navigation params being passed:', { 
-      username: item.username 
-    });
-    
-    if (!item.username) {
-      Alert.alert('Error', 'User information is not available');
+  const handleFollow = async () => {
+    try {
+      const endpoint = isFollowing ? 'unfollow' : 'follow';
+      const headers = {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      };
+      
+      const res = await axios.post(
+        `${API_BASE_URL}/follow/${endpoint}/${userId || profile?.id}`,
+        {},
+        { headers }
+      );
+      
+      setIsFollowing(!isFollowing);
+      setFollowersCount(res.data.followersCount);
+    } catch (err) {
+      console.error('Follow error:', err);
+      Alert.alert('Error', err.response?.data?.message || 'Failed to update follow status');
+    }
+  };
+
+  const onRefresh = () => {
+    setRefreshing(true);
+    fetchProfileData();
+  };
+
+  useEffect(() => {
+    if (!userId && !username) {
+      Alert.alert('Error', 'User information is missing');
+      navigation.goBack();
       return;
     }
     
-    navigation.navigate('ShowProfile', { 
-      username: item.username ,
-      userId: item.userId
-    });
-  }}
->
-      <Image source={{ uri: `https://ui-avatars.com/api/?name=${item.username}` }} style={styles.avatar} />
-      <View style={styles.userInfo}>
-        <Text style={styles.username}>{item.username}</Text>
-        <Text style={styles.postTime}>{new Date(item.createdAt).toLocaleDateString()}</Text>
+    if (!token) {
+      Alert.alert('Error', 'Please log in to view profiles');
+      navigation.goBack();
+      return;
+    }
+    
+    fetchProfileData();
+  }, [userId, username, token]);
+
+  // Render post exactly like FeedScreen
+  const renderPost = ({ item, index }) => (
+    <Animatable.View animation="slideInUp" delay={index * 150} style={styles.card}>
+      <View style={styles.userRow}>
+        <Image source={{ uri: `https://ui-avatars.com/api/?name=${item.username}` }} style={styles.avatar} />
+        <View style={styles.userInfo}>
+          <Text style={styles.username}>{item.username}</Text>
+          <Text style={styles.postTime}>{new Date(item.createdAt).toLocaleDateString()}</Text>
+        </View>
+        <TouchableOpacity 
+          onPress={() => handleBookmark(item.id)}
+          style={styles.bookmarkBtn}
+        >
+          <Ionicons 
+            name={item.isBookmarkedByCurrentUser ? "bookmark" : "bookmark-outline"} 
+            size={20} 
+            color={item.isBookmarkedByCurrentUser ? "#1e90ff" : "#666"} 
+          />
+        </TouchableOpacity>
       </View>
-      <TouchableOpacity 
-        onPress={() => handleBookmark(item.id)}
-        style={styles.bookmarkBtn}
-      >
-        <Ionicons 
-          name={item.isBookmarkedByCurrentUser ? "bookmark" : "bookmark-outline"} 
-          size={20} 
-          color={item.isBookmarkedByCurrentUser ? "#1e90ff" : "#666"} 
-        />
-      </TouchableOpacity>
-    </TouchableOpacity>
 
       <View style={styles.contentArea}>
         {item.content && <ReadMoreText text={item.content} />}
@@ -429,23 +519,97 @@ export default function FeedScreen() {
     </Animatable.View>
   );
 
+  if (loading && !refreshing) {
+    return (
+      <View style={styles.loaderContainer}>
+        <ActivityIndicator size="large" color="#1e90ff" />
+        <Text style={styles.loadingText}>Loading profile...</Text>
+      </View>
+    );
+  }
+
+  if (error) {
+    return (
+      <View style={styles.errorContainer}>
+        <Ionicons name="alert-circle" size={50} color="#ff6b6b" />
+        <Text style={styles.errorText}>{error}</Text>
+        <TouchableOpacity onPress={fetchProfileData} style={styles.retryButton}>
+          <Text style={styles.retryText}>Try Again</Text>
+        </TouchableOpacity>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
+          <Text style={styles.backText}>Go Back</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
   return (
-    <View style={{ flex: 1, backgroundColor: '#f8f9fa' }}>
-      <StatusBar barStyle="dark-content" backgroundColor="#f8f9fa" />
-      {loading ? (
-        <ActivityIndicator size="large" color="#1e90ff" style={{ marginTop: 40 }} />
-      ) : (
-        <FlatList
-          data={posts}
-          keyExtractor={(item) => item.id.toString()}
-          renderItem={renderPost}
-          contentContainerStyle={styles.container}
-          showsVerticalScrollIndicator={false}
-          refreshing={refreshing}
-          onRefresh={fetchPosts}
-        />
-      )}
-      
+    <View style={styles.container}>
+      <View style={styles.header}>
+        <TouchableOpacity onPress={() => navigation.goBack()}>
+          <Ionicons name="arrow-back" size={24} color="#333" />
+        </TouchableOpacity>
+        <Text style={styles.headerTitle}>
+          {profile?.username || username || 'Profile'}
+        </Text>
+      </View>
+
+      <FlatList
+        data={posts}
+        renderItem={renderPost}
+        keyExtractor={(item) => item.id.toString()}
+        ListHeaderComponent={
+          <>
+            <View style={styles.profileInfo}>
+              <Image 
+                source={{ 
+                  uri: profile?.imageUrl || `https://ui-avatars.com/api/?name=${profile?.username}&background=random` 
+                }} 
+                style={styles.profileAvatar} 
+              />
+              <View style={styles.stats}>
+                <View style={styles.statItem}>
+                  <Text style={styles.statCount}>{followersCount}</Text>
+                  <Text style={styles.statLabel}>Followers</Text>
+                </View>
+                <View style={styles.statItem}>
+                  <Text style={styles.statCount}>{posts.length}</Text>
+                  <Text style={styles.statLabel}>Posts</Text>
+                </View>
+              </View>
+            </View>
+
+            {currentUserId !== (userId || profile?.id) && (
+              <TouchableOpacity 
+                onPress={handleFollow}
+                style={[styles.followButton, isFollowing && styles.followingButton]}
+              >
+                <Text style={styles.followButtonText}>
+                  {isFollowing ? 'Following' : 'Follow'}
+                </Text>
+              </TouchableOpacity>
+            )}
+
+            <Text style={styles.postsTitle}>Posts</Text>
+          </>
+        }
+        contentContainerStyle={styles.listContainer}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            colors={['#1e90ff']}
+          />
+        }
+        ListEmptyComponent={
+          <View style={styles.emptyPosts}>
+            <Ionicons name="images-outline" size={50} color="#ccc" />
+            <Text style={styles.emptyText}>No posts yet</Text>
+          </View>
+        }
+        showsVerticalScrollIndicator={false}
+      />
+
       <CommentsModal
         visible={commentsModal.visible}
         onClose={closeComments}
@@ -454,13 +618,139 @@ export default function FeedScreen() {
       />
     </View>
   );
-}
+};
 
 const styles = StyleSheet.create({
-  container: {
-    padding: 16,
+  container: { 
+    flex: 1, 
+    backgroundColor: '#f8f9fa' 
+  },
+  listContainer: {
+    paddingHorizontal: 16,
     backgroundColor: '#f8f9fa',
   },
+  loaderContainer: { 
+    flex: 1, 
+    justifyContent: 'center', 
+    alignItems: 'center',
+    backgroundColor: '#f8f9fa'
+  },
+  loadingText: {
+    marginTop: 10,
+    fontSize: 16,
+    color: '#666'
+  },
+  errorContainer: { 
+    flex: 1, 
+    justifyContent: 'center', 
+    alignItems: 'center',
+    padding: 20,
+    backgroundColor: '#f8f9fa'
+  },
+  errorText: { 
+    color: '#ff6b6b', 
+    fontSize: 16,
+    textAlign: 'center',
+    marginVertical: 15
+  },
+  retryButton: {
+    backgroundColor: '#1e90ff',
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 8,
+    marginTop: 10
+  },
+  retryText: { 
+    color: '#fff',
+    fontWeight: 'bold'
+  },
+  backButton: {
+    backgroundColor: '#6c757d',
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 8,
+    marginTop: 10
+  },
+  backText: {
+    color: '#fff',
+    fontWeight: 'bold'
+  },
+  header: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    padding: 15,
+    borderBottomWidth: 1,
+    borderBottomColor: '#eee',
+    backgroundColor: '#fff'
+  },
+  headerTitle: { 
+    fontSize: 18, 
+    fontWeight: 'bold', 
+    marginLeft: 20,
+    color: '#333'
+  },
+  profileInfo: { 
+    flexDirection: 'row', 
+    padding: 20, 
+    alignItems: 'center',
+    backgroundColor: '#fff',
+    marginBottom: 8,
+    borderRadius: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 6,
+    elevation: 3,
+  },
+  profileAvatar: { 
+    width: 80, 
+    height: 80, 
+    borderRadius: 40,
+    backgroundColor: '#f0f0f0'
+  },
+  stats: { 
+    flex: 1,
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    marginLeft: 20
+  },
+  statItem: {
+    alignItems: 'center'
+  },
+  statCount: { 
+    fontSize: 18, 
+    fontWeight: 'bold',
+    color: '#333'
+  },
+  statLabel: { 
+    fontSize: 14, 
+    color: '#666',
+    marginTop: 4
+  },
+  followButton: {
+    backgroundColor: '#1e90ff',
+    padding: 12,
+    borderRadius: 8,
+    marginHorizontal: 16,
+    marginBottom: 8,
+    alignItems: 'center'
+  },
+  followingButton: {
+    backgroundColor: '#6c757d'
+  },
+  followButtonText: {
+    color: '#fff',
+    fontWeight: 'bold',
+    fontSize: 16
+  },
+  postsTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginHorizontal: 16,
+    marginBottom: 16,
+    color: '#333'
+  },
+  // Post styles from FeedScreen
   card: {
     backgroundColor: '#fff',
     borderRadius: 16,
@@ -555,7 +845,16 @@ const styles = StyleSheet.create({
     color: '#444',
     fontSize: 14,
   },
-  // Comments Modal Styles
+  emptyPosts: {
+    padding: 40,
+    alignItems: 'center'
+  },
+  emptyText: {
+    fontSize: 16,
+    color: '#999',
+    marginTop: 10
+  },
+  // Comments Modal Styles (from FeedScreen)
   modalContainer: {
     flex: 1,
     backgroundColor: '#fff',
@@ -642,8 +941,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     padding: 40,
   },
-  emptyText: {
-    color: '#999',
-    fontSize: 16,
-  },
 });
+
+export default UserProfileScreen;
