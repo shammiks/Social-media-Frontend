@@ -28,10 +28,10 @@ const authSlice = createSlice({
       AsyncStorage.removeItem('token');
     },
     restoreToken: (state, action) => {
-  state.token = action.payload.token;
-  state.user = action.payload.user;
-  state.isAuthenticated = !!action.payload.token;
-},
+      state.token = action.payload.token;
+      state.user = action.payload.user;
+      state.isAuthenticated = !!action.payload.token;
+    },
 
 
   },

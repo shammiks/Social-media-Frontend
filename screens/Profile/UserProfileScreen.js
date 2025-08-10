@@ -21,6 +21,7 @@ import axios from 'axios';
 import { Ionicons, Feather, MaterialIcons } from '@expo/vector-icons';
 import { Video } from 'expo-av';
 import * as Animatable from 'react-native-animatable';
+import { API_ENDPOINTS, getUserProfileEndpoint, createAuthHeaders } from '../../utils/apiConfig';
 
 const { width } = Dimensions.get('window');
 
@@ -44,19 +45,19 @@ function ReadMoreText({ text, numberOfLines = 3 }) {
   );
 }
 
-// Comments Modal Component
+
+
+// Comments Modal Component (unchanged)
 function CommentsModal({ visible, onClose, postId, token }) {
   const [comments, setComments] = useState([]);
   const [newComment, setNewComment] = useState('');
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
-  const COMMENTS_URL = 'http://192.168.1.3:8080/api/comments';
-
   const fetchComments = async () => {
     try {
       setLoading(true);
-      const res = await axios.get(`${COMMENTS_URL}/posts/${postId}/comments?page=0&size=50`, {
+      const res = await axios.get(`${API_ENDPOINTS.COMMENTS}/posts/${postId}/comments?page=0&size=50`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       setComments(res.data.content || []);
@@ -73,7 +74,7 @@ function CommentsModal({ visible, onClose, postId, token }) {
 
     try {
       setSubmitting(true);
-      const res = await axios.post(`${COMMENTS_URL}/${postId}`, {
+      const res = await axios.post(`${API_ENDPOINTS.COMMENTS}/${postId}`, {
         content: newComment.trim()
       }, {
         headers: { 
@@ -192,7 +193,30 @@ function CommentsModal({ visible, onClose, postId, token }) {
 const UserProfileScreen = ({ route, navigation }) => {
   const { userId, username } = route.params;
   const token = useSelector((state) => state.auth.token);
-  const currentUserId = useSelector((state) => state.auth.userId);
+  const currentUserId = useSelector((state) => state.auth.userId || state.auth.user?.id || state.user?.id);
+  const authState = useSelector((state) => state.auth);
+  
+  // Add token validation
+  useEffect(() => {
+    if (!token) {
+      Alert.alert(
+        'Authentication Error', 
+        'You must be logged in to view profiles. Please log in again.',
+        [{ text: 'Go to Login', onPress: () => navigation.navigate('Login') }]
+      );
+      return;
+    }
+    
+    // Validate token format (basic JWT validation)
+    if (typeof token !== 'string' || !token.includes('.')) {
+      Alert.alert(
+        'Invalid Token', 
+        'Your session token is invalid. Please log in again.',
+        [{ text: 'Go to Login', onPress: () => navigation.navigate('Login') }]
+      );
+      return;
+    }
+  }, [token, navigation]);
   
   const [profile, setProfile] = useState(null);
   const [posts, setPosts] = useState([]);
@@ -200,12 +224,12 @@ const UserProfileScreen = ({ route, navigation }) => {
   const [followersCount, setFollowersCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [followLoading, setFollowLoading] = useState(false); // NEW: Prevent duplicate follow requests
+  const [followAuthError, setFollowAuthError] = useState(false); // NEW: Track follow auth issues
   const [error, setError] = useState(null);
   const [commentsModal, setCommentsModal] = useState({ visible: false, postId: null });
-
-  const API_BASE_URL = 'http://192.168.1.3:8080/api';
-  const POSTS_URL = 'http://192.168.1.3:8080/api/posts';
-  const BOOKMARKS_URL = 'http://192.168.1.3:8080/api/bookmarks';
+  const [followCache, setFollowCache] = useState(new Map());
+  const getFollowCacheKey = (currentUserId, targetUserId) => `${currentUserId}-${targetUserId}`;
 
   const handleAuthError = () => {
     Alert.alert('Session Expired', 'Please log in again', [
@@ -213,92 +237,426 @@ const UserProfileScreen = ({ route, navigation }) => {
     ]);
   };
 
-  const fetchProfileData = async () => {
-    console.log("🔍 Debug: Fetching profile data...");
+  // IMPROVED: Better follow status checking with multiple fallback strategies
+const checkFollowStatus = async (targetUserId, headers) => {
+  if (!currentUserId || currentUserId === targetUserId) {
+    return { isFollowing: false, followersCount: 0 };
+  }
+
+  const cacheKey = getFollowCacheKey(currentUserId, targetUserId);
+  const cachedStatus = followCache.get(cacheKey);
+
+  // Try to get fresh status from server
+  try {
     
-    if (!token) {
-      setError("Authentication required");
-      handleAuthError();
-      return;
-    }
-
-    const headers = {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${token}`
+    const requestHeaders = {
+      ...headers,
+      'Accept': 'application/json',
     };
-
+    
+    const response = await axios.get(`${API_ENDPOINTS.FOLLOW}/status?followeeId=${targetUserId}`, { 
+      headers: requestHeaders
+    });
+    
+    const freshStatus = {
+      isFollowing: response.data.isFollowing || response.data.following || false,
+      followersCount: response.data.followersCount || 0
+    };
+    
+    // Update cache with fresh data
+    setFollowCache(prev => new Map(prev).set(cacheKey, freshStatus));
+    return freshStatus;
+    
+  } catch (statusError) {
+    console.warn(`Follow status check failed: ${statusError.message}`);
+    
+    // If this is a 401 error, the follow endpoints have authorization issues
+    if (statusError.response?.status === 401) {
+      // Try to get basic follower count from user profile if available
+      try {
+        const userProfileResponse = await axios.get(`${API_ENDPOINTS.USERS}/${targetUserId}`, { headers });
+        const followerCount = userProfileResponse.data.followersCount || 0;
+        
+        const fallbackStatus = {
+          isFollowing: false, // Default to false since we can't check
+          followersCount: followerCount,
+          authError: true // Flag to indicate auth issues
+        };
+        
+        setFollowAuthError(true); // Set the error flag for UI
+        setFollowCache(prev => new Map(prev).set(cacheKey, fallbackStatus));
+        return fallbackStatus;
+        
+      } catch (profileError) {
+        const minimalStatus = { 
+          isFollowing: false, 
+          followersCount: 0,
+          authError: true
+        };
+        setFollowAuthError(true); // Set the error flag for UI
+        return minimalStatus;
+      }
+    }
+    
+    // Method 2: Try alternative status endpoint format (for non-401 errors)
     try {
-      setError(null);
-      setLoading(true);
-
-      // Fetch profile
-      console.log("⏳ Attempting to fetch profile...");
-      const profileResponse = await axios.get(
-        userId 
-          ? `${API_BASE_URL}/users/${userId}`
-          : `${API_BASE_URL}/users/by-username/${username}`,
-        { headers }
-      );
+      const altResponse = await axios.get(`${API_ENDPOINTS.FOLLOW}/status/${targetUserId}`, { headers });
       
-      const profileData = profileResponse.data;
-      setProfile(profileData);
-      setFollowersCount(profileData.followersCount || 0);
-
-      // Fetch posts and bookmarks in parallel (like FeedScreen)
-      const [postsRes, bookmarksRes] = await Promise.all([
-        axios.get(`${POSTS_URL}/user/${profileData.id}`, { headers }),
-        axios.get(`${BOOKMARKS_URL}/my-bookmarks`, { headers })
-      ]);
-
-      // Create a Set of bookmarked post IDs for O(1) lookups
-      const bookmarkedPostIds = new Set(
-        bookmarksRes.data.map(post => post.id)
-      );
-
-      // Merge bookmark status into posts (exactly like FeedScreen)
-      const postsWithBookmarks = (postsRes.data.content || []).map(post => ({
-        ...post,
-        isBookmarkedByCurrentUser: bookmarkedPostIds.has(post.id)
-      }));
-
-      setPosts(postsWithBookmarks);
-
-      // Check follow status
-      if (currentUserId !== profileData.id) {
+      const altStatus = {
+        isFollowing: altResponse.data.isFollowing || altResponse.data.following || false,
+        followersCount: altResponse.data.followersCount || 0
+      };
+      
+      setFollowCache(prev => new Map(prev).set(cacheKey, altStatus));
+      return altStatus;
+      
+    } catch (altError) {
+      // If this is also a 401 error, skip remaining follow endpoint attempts
+      if (altError.response?.status === 401) {
+        // Try to get basic follower count from user profile
         try {
-          const followStatusResponse = await axios.get(
-            `${API_BASE_URL}/follow/status/${profileData.id}`,
-            { headers }
-          );
-          setIsFollowing(followStatusResponse.data.isFollowing);
-        } catch (followError) {
-          console.warn("Follow status check failed:", followError.message);
-          setIsFollowing(false);
+          const userProfileResponse = await axios.get(`${API_ENDPOINTS.USERS}/${targetUserId}`, { headers });
+          const followerCount = userProfileResponse.data.followersCount || 0;
+          
+          const fallbackStatus = { isFollowing: false, followersCount: followerCount };
+          return fallbackStatus;
+          
+        } catch (profileError) {
+          return { isFollowing: false, followersCount: 0 };
         }
       }
-
-    } catch (error) {
-      console.error("Request failed:", error.response?.data || error.message);
-      setError(error.message);
-      
-      if (error.response?.status === 401) {
-        handleAuthError();
-      } else {
-        Alert.alert(
-          "Error",
-          error.response?.data?.message || "Failed to load profile"
-        );
-      }
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
     }
-  };
+  }
 
-  // Like functionality (exactly from FeedScreen)
+  // Method 3: Try to get followers list and check if current user is in it
+  try {
+    const followersResponse = await axios.get(`${API_ENDPOINTS.FOLLOW}/followers/${targetUserId}`, { headers });
+    const followers = followersResponse.data.content || followersResponse.data || [];
+    
+    const isFollowing = followers.some(follow => 
+      (follow.follower && follow.follower.id === currentUserId) ||
+      (follow.followerId === currentUserId) ||
+      (follow.id === currentUserId)
+    );
+    
+    const fallbackStatus = {
+      isFollowing: isFollowing,
+      followersCount: followers.length
+    };
+    
+    setFollowCache(prev => new Map(prev).set(cacheKey, fallbackStatus));
+    return fallbackStatus;
+    
+  } catch (followersError) {
+    // If this is a 401 error, skip the followers endpoint
+    if (followersError.response?.status === 401) {
+      // Skip to final fallback without trying more follow endpoints
+      if (cachedStatus) {
+        return cachedStatus;
+      }
+      
+      return { isFollowing: false, followersCount: 0 };
+    }
+  }
+
+  // Method 4: Get just the follower count
+  try {
+    const countResponse = await axios.get(`${API_ENDPOINTS.FOLLOW}/count/followers/${targetUserId}`, { headers });
+    const followersCount = countResponse.data || 0;
+    
+    // If we have cached status, use it with updated count
+    if (cachedStatus) {
+      const updatedStatus = { ...cachedStatus, followersCount };
+      setFollowCache(prev => new Map(prev).set(cacheKey, updatedStatus));
+      return updatedStatus;
+    }
+    
+    // No cached status, default to not following but with correct count
+    const defaultStatus = { isFollowing: false, followersCount };
+    return defaultStatus;
+    
+  } catch (countError) {
+    console.warn(`Follower count failed (${countError.response?.status}):`, countError.message);
+  }
+
+  // Final fallback: use cached data or defaults
+  if (cachedStatus) {
+    return cachedStatus;
+  }
+  
+  return { isFollowing: false, followersCount: 0 };
+};
+
+  const fetchProfileData = async (isRefresh = false) => {
+  if (!token) {
+    setError("Authentication required");
+    handleAuthError();
+    return;
+  }
+
+  const headers = createAuthHeaders(token);
+
+  try {
+    setError(null);
+    if (!isRefresh) setLoading(true);
+
+    // Fetch profile
+    const profileResponse = await axios.get(
+      getUserProfileEndpoint(userId, username),
+      { headers }
+    );
+    
+    const profileData = profileResponse.data;
+    setProfile(profileData);
+
+    // Fetch posts and bookmarks in parallel
+    const [postsRes, bookmarksRes] = await Promise.all([
+      axios.get(`${API_ENDPOINTS.POSTS}/user/${profileData.id}`, { headers }),
+      axios.get(`${API_ENDPOINTS.BOOKMARKS}/my-bookmarks`, { headers }).catch(err => {
+        console.warn('Bookmarks fetch failed:', err.message);
+        return { data: [] };
+      })
+    ]);
+
+    // Process posts with bookmarks
+    const bookmarkedPostIds = new Set(
+      (bookmarksRes.data || []).map(post => post.id)
+    );
+
+    const postsWithBookmarks = (postsRes.data.content || []).map(post => ({
+      ...post,
+      isBookmarkedByCurrentUser: bookmarkedPostIds.has(post.id)
+    }));
+
+    setPosts(postsWithBookmarks);
+
+    // Handle follow status for other users
+    if (currentUserId && currentUserId !== profileData.id) {
+      const followResult = await checkFollowStatus(profileData.id, headers);
+      
+      setIsFollowing(followResult.isFollowing);
+      setFollowersCount(followResult.followersCount);
+    } else {
+      // For own profile, just get follower count
+      try {
+        const followerCountResponse = await axios.get(`${API_ENDPOINTS.FOLLOW}/count/followers/${profileData.id}`, { headers });
+        setFollowersCount(followerCountResponse.data || 0);
+      } catch (countError) {
+        setFollowersCount(profileData.followersCount || 0);
+      }
+    }
+
+  } catch (error) {
+    console.error("Profile loading failed:", error.message);
+    setError(error.message);
+    
+    if (error.response?.status === 401) {
+      Alert.alert(
+        'Authentication Failed',
+        `Access denied. This could be due to:\n• Expired session\n• Invalid token\n• Server authentication issue\n\nError: ${error.response?.data?.message || 'Unauthorized'}`,
+        [{ text: 'Login Again', onPress: handleAuthError }]
+      );
+    } else {
+      Alert.alert("Error", error.response?.data?.message || "Failed to load profile");
+    }
+  } finally {
+    setLoading(false);
+    setRefreshing(false);
+  }
+};
+  // IMPROVED: Better follow handling with loading state and optimistic updates
+  const handleFollow = async () => {
+  if (followLoading) {
+    console.log('Follow request already in progress, ignoring...');
+    return;
+  }
+
+  if (!token || !currentUserId) {
+    Alert.alert('Error', 'Please log in to follow users');
+    return;
+  }
+
+  const targetUserId = userId || profile?.id;
+  if (currentUserId === targetUserId) {
+    Alert.alert('Error', 'You cannot follow yourself');
+    return;
+  }
+
+  const previousFollowState = isFollowing;
+  const previousFollowersCount = followersCount;
+  const cacheKey = getFollowCacheKey(currentUserId, targetUserId);
+
+  try {
+    setFollowLoading(true);
+
+    // Optimistic update
+    const newFollowState = !isFollowing;
+    const newFollowersCount = isFollowing ? Math.max(0, followersCount - 1) : followersCount + 1;
+    
+    setIsFollowing(newFollowState);
+    setFollowersCount(newFollowersCount);
+
+    const headers = {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+      'Accept': 'application/json',
+    };
+    
+    let response;
+    let success = false;
+    
+    // Try different follow endpoints in order of preference
+    const followEndpoints = [
+      {
+        name: 'toggle',
+        method: 'post',
+        url: `${API_ENDPOINTS.FOLLOW}/toggle?followeeId=${targetUserId}`,
+        data: {}
+      },
+      {
+        name: previousFollowState ? 'unfollow' : 'follow',
+        method: 'post', 
+        url: `${API_ENDPOINTS.FOLLOW}/${previousFollowState ? 'unfollow' : 'follow'}/${targetUserId}`,
+        data: {}
+      }
+    ];
+    
+    for (const endpoint of followEndpoints) {
+      try {
+        if (endpoint.method === 'post') {
+          response = await axios.post(endpoint.url, endpoint.data, { headers });
+        }
+        
+        success = true;
+        break;
+      } catch (endpointError) {
+        console.warn(`${endpoint.name} endpoint failed:`, endpointError.response?.status, endpointError.message);
+        continue;
+      }
+    }
+    
+    if (!success) {
+      throw new Error('All follow endpoints failed');
+    }
+    
+    // Extract final state from response
+    let finalFollowState = newFollowState;
+    let finalFollowersCount = newFollowersCount;
+    
+    if (response?.data) {
+      if (response.data.isFollowing !== undefined) {
+        finalFollowState = response.data.isFollowing;
+      } else if (response.data.following !== undefined) {
+        finalFollowState = response.data.following;
+      }
+      
+      if (response.data.followersCount !== undefined) {
+        finalFollowersCount = response.data.followersCount;
+      }
+    }
+
+    // Update UI state
+    setIsFollowing(finalFollowState);
+    setFollowersCount(finalFollowersCount);
+    
+    // CRITICAL: Update cache with new follow state
+    const newCacheEntry = {
+      isFollowing: finalFollowState,
+      followersCount: finalFollowersCount,
+      timestamp: Date.now()
+    };
+    
+    setFollowCache(prev => new Map(prev).set(cacheKey, newCacheEntry));
+    
+  } catch (err) {
+    console.error('Follow error:', err);
+    
+    // Revert optimistic updates
+    setIsFollowing(previousFollowState);
+    setFollowersCount(previousFollowersCount);
+    
+    if (err.response?.status === 401) {
+      Alert.alert(
+        'Authorization Issue', 
+        'Follow functionality is currently experiencing authorization issues. This might be due to backend configuration. Your session is still valid for viewing profiles.',
+        [{ text: 'OK' }]
+      );
+    } else {
+      Alert.alert('Error', err.response?.data?.message || 'Failed to update follow status');
+    }
+  } finally {
+    setFollowLoading(false);
+  }
+};
+const renderFollowButton = () => {
+  if (currentUserId === (userId || profile?.id)) {
+    return null; // Don't show follow button on own profile
+  }
+
+  // Show disabled button with info message if there are auth errors
+  if (followAuthError) {
+    return (
+      <TouchableOpacity 
+        disabled={true}
+        style={[styles.followButton, styles.followDisabledButton]}
+        onPress={() => {
+          Alert.alert(
+            'Follow Feature Unavailable', 
+            'Follow functionality is currently experiencing backend authorization issues. The development team is working on a fix.',
+            [{ text: 'OK' }]
+          );
+        }}
+      >
+        <View style={styles.followButtonContent}>
+          <Ionicons name="warning-outline" size={16} color="#999" />
+          <Text style={[styles.followButtonText, { color: '#999', marginLeft: 8 }]}>
+            Follow Unavailable
+          </Text>
+        </View>
+      </TouchableOpacity>
+    );
+  }
+
+  return (
+    <TouchableOpacity 
+      onPress={handleFollow}
+      disabled={followLoading}
+      style={[
+        styles.followButton, 
+        isFollowing && styles.followingButton,
+        followLoading && styles.followLoadingButton
+      ]}
+    >
+      <View style={styles.followButtonContent}>
+        {followLoading ? (
+          <>
+            <ActivityIndicator size="small" color="#fff" />
+            <Text style={[styles.followButtonText, { marginLeft: 8 }]}>
+              {isFollowing ? 'Unfollowing...' : 'Following...'}
+            </Text>
+          </>
+        ) : (
+          <>
+            <Ionicons 
+              name={isFollowing ? "person-remove" : "person-add"} 
+              size={18} 
+              color="#fff" 
+            />
+            <Text style={[styles.followButtonText, { marginLeft: 8 }]}>
+              {isFollowing ? 'Following' : 'Follow'}
+            </Text>
+          </>
+        )}
+      </View>
+    </TouchableOpacity>
+  );
+};
+
+
+  // Like functionality (unchanged)
   const handleLike = async (postId) => {
     try {
-      const res = await axios.post(`${POSTS_URL}/${postId}/like`, {}, {
+      const res = await axios.post(`${API_ENDPOINTS.POSTS}/${postId}/like`, {}, {
         headers: { Authorization: `Bearer ${token}` }
       });
 
@@ -319,10 +677,10 @@ const UserProfileScreen = ({ route, navigation }) => {
     }
   };
 
-  // Bookmark functionality (exactly from FeedScreen)
+  // Bookmark functionality (unchanged)
   const handleBookmark = async (postId) => {
     try {
-      const res = await axios.post(`${BOOKMARKS_URL}/${postId}`, {}, {
+      const res = await axios.post(`${API_ENDPOINTS.BOOKMARKS}/${postId}`, {}, {
         headers: { Authorization: `Bearer ${token}` }
       });
 
@@ -352,7 +710,7 @@ const UserProfileScreen = ({ route, navigation }) => {
     }
   };
 
-  // Share functionality (exactly from FeedScreen)
+  // Share functionality (unchanged)
   const handleShare = async (post) => {
     try {
       let shareMessage = `Check out this post by ${post.username}!\n\n`;
@@ -397,31 +755,9 @@ const UserProfileScreen = ({ route, navigation }) => {
     setCommentsModal({ visible: false, postId: null });
   };
 
-  const handleFollow = async () => {
-    try {
-      const endpoint = isFollowing ? 'unfollow' : 'follow';
-      const headers = {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json'
-      };
-      
-      const res = await axios.post(
-        `${API_BASE_URL}/follow/${endpoint}/${userId || profile?.id}`,
-        {},
-        { headers }
-      );
-      
-      setIsFollowing(!isFollowing);
-      setFollowersCount(res.data.followersCount);
-    } catch (err) {
-      console.error('Follow error:', err);
-      Alert.alert('Error', err.response?.data?.message || 'Failed to update follow status');
-    }
-  };
-
   const onRefresh = () => {
     setRefreshing(true);
-    fetchProfileData();
+    fetchProfileData(true); // Pass true to indicate this is a refresh
   };
 
   useEffect(() => {
@@ -440,7 +776,7 @@ const UserProfileScreen = ({ route, navigation }) => {
     fetchProfileData();
   }, [userId, username, token]);
 
-  // Render post exactly like FeedScreen
+  // Render post (unchanged)
   const renderPost = ({ item, index }) => (
     <Animatable.View animation="slideInUp" delay={index * 150} style={styles.card}>
       <View style={styles.userRow}>
@@ -558,41 +894,32 @@ const UserProfileScreen = ({ route, navigation }) => {
         data={posts}
         renderItem={renderPost}
         keyExtractor={(item) => item.id.toString()}
-        ListHeaderComponent={
-          <>
-            <View style={styles.profileInfo}>
-              <Image 
-                source={{ 
-                  uri: profile?.imageUrl || `https://ui-avatars.com/api/?name=${profile?.username}&background=random` 
-                }} 
-                style={styles.profileAvatar} 
-              />
-              <View style={styles.stats}>
-                <View style={styles.statItem}>
-                  <Text style={styles.statCount}>{followersCount}</Text>
-                  <Text style={styles.statLabel}>Followers</Text>
-                </View>
-                <View style={styles.statItem}>
-                  <Text style={styles.statCount}>{posts.length}</Text>
-                  <Text style={styles.statLabel}>Posts</Text>
-                </View>
-              </View>
-            </View>
+       ListHeaderComponent={
+  <>
+    <View style={styles.profileInfo}>
+      <Image 
+        source={{ 
+          uri: profile?.imageUrl || `https://ui-avatars.com/api/?name=${profile?.username}&background=random` 
+        }} 
+        style={styles.profileAvatar} 
+      />
+      <View style={styles.stats}>
+        <View style={styles.statItem}>
+          <Text style={styles.statCount}>{followersCount}</Text>
+          <Text style={styles.statLabel}>Followers</Text>
+        </View>
+        <View style={styles.statItem}>
+          <Text style={styles.statCount}>{posts.length}</Text>
+          <Text style={styles.statLabel}>Posts</Text>
+        </View>
+      </View>
+    </View>
 
-            {currentUserId !== (userId || profile?.id) && (
-              <TouchableOpacity 
-                onPress={handleFollow}
-                style={[styles.followButton, isFollowing && styles.followingButton]}
-              >
-                <Text style={styles.followButtonText}>
-                  {isFollowing ? 'Following' : 'Follow'}
-                </Text>
-              </TouchableOpacity>
-            )}
+    {renderFollowButton()}
 
-            <Text style={styles.postsTitle}>Posts</Text>
-          </>
-        }
+    <Text style={styles.postsTitle}>Posts</Text>
+  </>
+}
         contentContainerStyle={styles.listContainer}
         refreshControl={
           <RefreshControl
@@ -639,6 +966,14 @@ const styles = StyleSheet.create({
     marginTop: 10,
     fontSize: 16,
     color: '#666'
+  },
+  followLoadingButton: {
+    opacity: 0.7,
+  },
+  followButtonContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   errorContainer: { 
     flex: 1, 
@@ -737,6 +1072,11 @@ const styles = StyleSheet.create({
   },
   followingButton: {
     backgroundColor: '#6c757d'
+  },
+  followDisabledButton: {
+    backgroundColor: '#f8f9fa',
+    borderWidth: 1,
+    borderColor: '#e9ecef'
   },
   followButtonText: {
     color: '#fff',

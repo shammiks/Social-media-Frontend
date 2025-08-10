@@ -41,12 +41,9 @@ const navigation = useNavigation();
       body: JSON.stringify({ email, password }),
     });
      
+    const data = await response.json();
 
-    const data = await response.json(); // correct way to extract response body
-
-console.log('Login response:', data); // ✅ show actual parsed data
-
-if (response.ok) {
+    if (response.ok) {
   dispatch(loginSuccess({
     token: data.token,
     user: data.user,
