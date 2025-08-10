@@ -1,6 +1,7 @@
 import React from "react";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import ChatScreen from "../screens/Chat/ChatScreen";
+import ChatListScreen from "../screens/Chat/ChatListScreen";
 import FeedScreen from "@/screens/Home/FeedScreen";
 import CreatePostScreen from "@/screens/Post/CreatePostScreen";
 import ProfileScreen from "@/screens/Profile/ProfileScreen";
@@ -52,7 +53,7 @@ const BottomTabNavigator = () => {
       })}
     >
       <Tab.Screen name="Feed" component={FeedScreen} />
-      <Tab.Screen name="Chat" component={ChatScreen} />
+      <Tab.Screen name="Chat" component={ChatListScreen} />
       <Tab.Screen name="Post" component={CreatePostScreen} />
       <Tab.Screen name="Profile" component={ProfileScreen} />
     </Tab.Navigator>

@@ -11,6 +11,8 @@ import { StatusBar } from 'expo-status-bar';
 import axios from 'axios';
 import { useSelector } from 'react-redux';
 import { useNavigation } from '@react-navigation/native';
+import * as FileSystem from 'expo-file-system';
+import * as MediaLibrary from 'expo-media-library';
 
 const { width } = Dimensions.get('window');
 const BASE_URL = 'http://192.168.1.3:8080/api/posts';
@@ -184,6 +186,9 @@ export default function FeedScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [commentsModal, setCommentsModal] = useState({ visible: false, postId: null });
+  const [imageModal, setImageModal] = useState({ visible: false, imageUrl: null });
+  const [downloading, setDownloading] = useState(false);
+  const [imageLoading, setImageLoading] = useState(true);
   const token = useSelector((state) => state.auth.token);
 
   const navigation = useNavigation();
@@ -217,7 +222,10 @@ export default function FeedScreen() {
       isBookmarkedByCurrentUser: bookmarkedPostIds.has(post.id)
     }));
 
-    setPosts(postsWithBookmarks);
+    // Sort posts by createdAt in descending order (newest first)
+    const sortedPosts = postsWithBookmarks.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+
+    setPosts(sortedPosts);
   } catch (err) {
     console.error('Fetch error:', err);
     Alert.alert('Error', 'Failed to load posts');
@@ -374,7 +382,9 @@ export default function FeedScreen() {
       <View style={styles.contentArea}>
         {item.content && <ReadMoreText text={item.content} />}
         {item.imageUrl && (
-          <Image source={{ uri: item.imageUrl }} style={styles.postImage} resizeMode="cover" />
+          <TouchableOpacity onPress={() => openImageModal(item.imageUrl)}>
+            <Image source={{ uri: item.imageUrl }} style={styles.postImage} resizeMode="cover" />
+          </TouchableOpacity>
         )}
         {item.videoUrl && (
           <Video
@@ -429,9 +439,79 @@ export default function FeedScreen() {
     </Animatable.View>
   );
 
+  const handleNotificationPress = () => {
+    // Navigate to notifications screen when implemented
+    // navigation.navigate('Notifications');
+    Alert.alert('Notifications', 'Notifications feature coming soon!');
+  };
+
+  const openImageModal = (imageUrl) => {
+    setImageLoading(true);
+    setImageModal({ visible: true, imageUrl });
+  };
+
+  const closeImageModal = () => {
+    setImageModal({ visible: false, imageUrl: null });
+    setImageLoading(true);
+  };
+
+  const downloadImage = async (imageUrl) => {
+    try {
+      setDownloading(true);
+      
+      // Request permissions
+      const { status } = await MediaLibrary.requestPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permission needed', 'Please grant permission to save images to your gallery');
+        return;
+      }
+
+      // Get file info and download
+      const fileUri = FileSystem.documentDirectory + 'temp_image.jpg';
+      const downloadResult = await FileSystem.downloadAsync(imageUrl, fileUri);
+      
+      if (downloadResult.status === 200) {
+        // Save to media library
+        const asset = await MediaLibrary.createAssetAsync(downloadResult.uri);
+        await MediaLibrary.createAlbumAsync('SocialApp', asset, false);
+        
+        Alert.alert('Success', 'Image saved to gallery!');
+      } else {
+        throw new Error('Download failed');
+      }
+    } catch (error) {
+      console.error('Download error:', error);
+      Alert.alert('Error', 'Failed to download image');
+    } finally {
+      setDownloading(false);
+    }
+  };
+
   return (
     <View style={{ flex: 1, backgroundColor: '#f8f9fa' }}>
-      <StatusBar barStyle="dark-content" backgroundColor="#f8f9fa" />
+      <StatusBar barStyle="dark-content" backgroundColor="#fff" />
+      
+      {/* Header with App Icon and Notification */}
+      <View style={styles.header}>
+        <View style={styles.headerLeft}>
+          <View style={styles.appIconContainer}>
+            <Ionicons name="chatbubbles" size={24} color="#1e90ff" />
+          </View>
+          <Text style={styles.appName}>SocialApp</Text>
+        </View>
+        
+        <TouchableOpacity 
+          style={styles.notificationButton}
+          onPress={handleNotificationPress}
+        >
+          <Ionicons name="notifications-outline" size={24} color="#333" />
+          {/* Add notification badge if needed */}
+          <View style={styles.notificationBadge}>
+            <Text style={styles.badgeText}>3</Text>
+          </View>
+        </TouchableOpacity>
+      </View>
+
       {loading ? (
         <ActivityIndicator size="large" color="#1e90ff" style={{ marginTop: 40 }} />
       ) : (
@@ -452,6 +532,54 @@ export default function FeedScreen() {
         postId={commentsModal.postId}
         token={token}
       />
+
+      {/* Full Screen Image Modal */}
+      <Modal
+        visible={imageModal.visible}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={closeImageModal}
+      >
+        <View style={styles.imageModalContainer}>
+          <View style={styles.imageModalHeader}>
+            <TouchableOpacity 
+              style={styles.closeButton} 
+              onPress={closeImageModal}
+            >
+              <Ionicons name="close" size={30} color="#fff" />
+            </TouchableOpacity>
+            <TouchableOpacity 
+              style={styles.downloadButton} 
+              onPress={() => downloadImage(imageModal.imageUrl)}
+              disabled={downloading}
+            >
+              {downloading ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <Ionicons name="download-outline" size={24} color="#fff" />
+              )}
+            </TouchableOpacity>
+          </View>
+          
+          <View style={styles.imageContainer}>
+            {imageLoading && (
+              <View style={styles.imageLoadingContainer}>
+                <ActivityIndicator size="large" color="#fff" />
+                <Text style={styles.loadingText}>Loading image...</Text>
+              </View>
+            )}
+            {imageModal.imageUrl && (
+              <Image 
+                source={{ uri: imageModal.imageUrl }} 
+                style={styles.fullScreenImage}
+                resizeMode="contain"
+                onLoad={() => setImageLoading(false)}
+                onError={() => setImageLoading(false)}
+              />
+            )}
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -644,6 +772,113 @@ const styles = StyleSheet.create({
   },
   emptyText: {
     color: '#999',
+    fontSize: 16,
+  },
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: '#fff',
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 3.84,
+    elevation: 5,
+  },
+  headerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  appIconContainer: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#f0f8ff',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  appName: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#333',
+  },
+  notificationButton: {
+    position: 'relative',
+    padding: 8,
+  },
+  notificationBadge: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    backgroundColor: '#ff4757',
+    borderRadius: 10,
+    minWidth: 20,
+    height: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: '#fff',
+  },
+  badgeText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: 'bold',
+  },
+  imageModalContainer: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.9)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  imageModalHeader: {
+    position: 'absolute',
+    top: 50,
+    left: 0,
+    right: 0,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    zIndex: 1,
+  },
+  closeButton: {
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    borderRadius: 25,
+    padding: 10,
+  },
+  downloadButton: {
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    borderRadius: 25,
+    padding: 10,
+    minWidth: 50,
+    alignItems: 'center',
+  },
+  imageContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    width: '100%',
+  },
+  fullScreenImage: {
+    width: width,
+    height: '80%',
+  },
+  imageLoadingContainer: {
+    position: 'absolute',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 2,
+  },
+  loadingText: {
+    color: '#fff',
+    marginTop: 10,
     fontSize: 16,
   },
 });

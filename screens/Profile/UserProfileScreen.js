@@ -588,6 +588,12 @@ const checkFollowStatus = async (targetUserId, headers) => {
     setFollowLoading(false);
   }
 };
+
+const startChat = async () => {
+  // Chat functionality not implemented yet
+  Alert.alert('Coming Soon', 'Chat functionality will be available in a future update');
+};
+
 const renderFollowButton = () => {
   if (currentUserId === (userId || profile?.id)) {
     return null; // Don't show follow button on own profile
@@ -915,7 +921,8 @@ const renderFollowButton = () => {
       </View>
     </View>
 
-    {renderFollowButton()}
+    {/* Follow Button */}
+    {profile?.id !== currentUserId && renderFollowButton()}
 
     <Text style={styles.postsTitle}>Posts</Text>
   </>
@@ -1066,9 +1073,9 @@ const styles = StyleSheet.create({
     backgroundColor: '#1e90ff',
     padding: 12,
     borderRadius: 8,
+    alignItems: 'center',
     marginHorizontal: 16,
-    marginBottom: 8,
-    alignItems: 'center'
+    marginBottom: 16,
   },
   followingButton: {
     backgroundColor: '#6c757d'

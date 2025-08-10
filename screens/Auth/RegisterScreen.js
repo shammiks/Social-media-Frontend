@@ -14,7 +14,7 @@ import {
 import React, { useState } from "react";
 import { StatusBar } from "expo-status-bar";
 import Animated, { FadeInUp, FadeInDown } from "react-native-reanimated";
-import { useNavigation } from "expo-router";
+import { useNavigation } from "@react-navigation/native";
 
 export default function RegisterScreen() {
   const navigation = useNavigation();
@@ -24,7 +24,7 @@ export default function RegisterScreen() {
   const [password, setPassword] = useState("");
 
   const handleRegister = async () => {
-  if (!name || !email || !password) {
+  if (!username || !email || !password) {
     Alert.alert("Error", "Please fill all fields");
     return;
   }
@@ -33,7 +33,7 @@ export default function RegisterScreen() {
     const response = await fetch("http://192.168.1.3:8080/api/auth/register", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name, email, password }),
+      body: JSON.stringify({ name: username, email, password }),
     });
 
     const text = await response.text(); // get raw text

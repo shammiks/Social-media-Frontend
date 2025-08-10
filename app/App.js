@@ -1,6 +1,7 @@
 // App.js or App.tsx
 import React, { useEffect , useState} from 'react';
 import { Provider, useDispatch } from 'react-redux';
+import { NavigationContainer } from '@react-navigation/native';
 import { store } from '../redux/store';
 import MainNavigator from '../navigation/MainNavigator';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -47,7 +48,9 @@ useEffect(() => {
   return (
      <View style={{ flex: 1 }}>
       <View style={{ height: STATUSBAR_HEIGHT, backgroundColor: "#fff" }} />
-      <MainNavigator />
+      <NavigationContainer>
+        <MainNavigator />
+      </NavigationContainer>
     </View>
   );
 };
