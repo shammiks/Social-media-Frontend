@@ -15,9 +15,9 @@ import * as FileSystem from 'expo-file-system';
 import * as MediaLibrary from 'expo-media-library';
 
 const { width } = Dimensions.get('window');
-const BASE_URL = 'http://192.168.1.3:8080/api/posts';
-const COMMENTS_URL = 'http://192.168.1.3:8080/api/comments';
-const BOOKMARKS_URL = 'http://192.168.1.3:8080/api/bookmarks';
+const BASE_URL = 'http://192.168.43.36:8080/api/posts';
+const COMMENTS_URL = 'http://192.168.43.36:8080/api/comments';
+const BOOKMARKS_URL = 'http://192.168.43.36:8080/api/bookmarks';
 
 function ReadMoreText({ text, numberOfLines = 3 }) {
   

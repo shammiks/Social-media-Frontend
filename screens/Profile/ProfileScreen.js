@@ -23,6 +23,8 @@ import { Video } from 'expo-av';
 import * as Linking from 'expo-linking';
 import { useSelector, useDispatch } from 'react-redux';
 import { logout, loginSuccess } from '../../redux/authSlice';
+import WebSocketService from '../../services/WebSocketService';
+import ChatAPI from '../../services/ChatApi';
 import Animated, { FadeInUp } from 'react-native-reanimated';
 import { useNavigation } from '@react-navigation/native';
 import { Ionicons, Feather, MaterialIcons } from '@expo/vector-icons';
@@ -49,7 +51,7 @@ const dispatch = useDispatch();
   const [imageLoading, setImageLoading] = useState(false);
   const pagerRef = useRef(null);
 
-  const BASE_URL = 'http://192.168.1.3:8080';
+  const BASE_URL = 'http://192.168.43.36:8080';
 
   const fetchData = async () => {
     try {
@@ -140,6 +142,8 @@ const dispatch = useDispatch();
           text: 'Logout',
           style: 'destructive',
           onPress: () => {
+            // Manually clear token and disconnect WebSocket before logout
+            ChatAPI.clearAuthToken();
             dispatch(logout());
             navigation.replace('Login');
           },
@@ -1079,6 +1083,3 @@ const styles = StyleSheet.create({
 });
 
 export default ProfileScreen;
-
-
-

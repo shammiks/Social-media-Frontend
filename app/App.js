@@ -22,8 +22,14 @@ const AuthLoader = () => {
   const [loading, setLoading] = useState(true);
 useEffect(() => {
   const loadToken = async () => {
-    const token = await AsyncStorage.getItem('token');
+    // Use the same key as ChatAPI ('authToken' instead of 'token')
+    const token = await AsyncStorage.getItem('authToken');
     const user = await AsyncStorage.getItem('user');
+    
+    console.log('App startup - restoring auth state');
+    console.log('Found token:', token ? 'Yes (' + token.substring(0, 20) + '...)' : 'No');
+    console.log('Found user:', user ? 'Yes' : 'No');
+    
     dispatch(restoreToken({
       token,
       user: user ? JSON.parse(user) : null,

@@ -18,7 +18,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import Animated, { FadeInUp } from 'react-native-reanimated';
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 
-const API_URL = 'http://192.168.1.3:8080/api/posts/upload';
+const API_URL = 'http://192.168.43.36:8080/api/posts/upload';
 
 const CreatePostScreen = () => {
   const [content, setContent] = useState('');
@@ -87,15 +87,17 @@ const CreatePostScreen = () => {
   };
 
   const handleSubmit = async () => {
-    if (!content.trim()) {
-      Alert.alert('Validation', 'Content is required.');
-      return;
-    }
-
+    // For polls, content is optional - only require poll question and options
     if (showPoll) {
       const nonEmptyOptions = pollOptions.filter(opt => opt.trim() !== '');
       if (!pollQuestion.trim() || nonEmptyOptions.length < 2) {
         Alert.alert('Validation', 'Poll must have a question and at least 2 options.');
+        return;
+      }
+    } else {
+      // For regular posts, content is still required
+      if (!content.trim()) {
+        Alert.alert('Validation', 'Content is required.');
         return;
       }
     }
@@ -105,7 +107,13 @@ const CreatePostScreen = () => {
       const token = await AsyncStorage.getItem('token');
       const formData = new FormData();
 
-      formData.append('content', content);
+      // Always append content field - empty string if no content for polls
+      if (content.trim()) {
+        formData.append('content', content);
+      } else {
+        // Send empty string for content when creating polls without description
+        formData.append('content', '');
+      }
       if (image)
         formData.append('image', {
           uri: image,
@@ -132,7 +140,9 @@ const CreatePostScreen = () => {
       if (showPoll) {
         formData.append("pollQuestion", pollQuestion);
         pollOptions.forEach((opt, idx) => {
-          if (opt.trim()) formData.append(`pollOptions[${idx}]`, opt.trim());
+          if (opt.trim()) {
+            formData.append(`pollOptions[${idx}]`, opt.trim());
+          }
         });
       }
 
@@ -140,7 +150,7 @@ const CreatePostScreen = () => {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${token}`,
-          'Content-Type': 'multipart/form-data',
+          // Don't set Content-Type for FormData - let it be set automatically
         },
         body: formData,
       });
@@ -204,7 +214,7 @@ const CreatePostScreen = () => {
           </View>
           <TextInput
             style={styles.input}
-            placeholder="Write anonymously..."
+            placeholder={showPoll ? "Add optional description..." : "Write anonymously..."}
             placeholderTextColor="#94a3b8"
             multiline
             value={content}

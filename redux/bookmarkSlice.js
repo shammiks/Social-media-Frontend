@@ -1,7 +1,7 @@
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
 import axios from 'axios';
 
-const BASE_URL = 'http://192.168.1.3:8080';
+const BASE_URL = 'http://192.168.43.36:8080';
 
 // Async thunk to fetch bookmarked posts
 export const fetchBookmarkedPosts = createAsyncThunk(

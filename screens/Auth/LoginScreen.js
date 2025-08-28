@@ -18,7 +18,8 @@ import Animated, { FadeInUp, FadeInDown } from "react-native-reanimated";
 import { useNavigation } from "@react-navigation/native";
 import { useDispatch } from 'react-redux';
 import { loginSuccess } from '../../redux/authSlice'; // adjust path
-
+import WebSocketService from '../../services/WebSocketService';
+import ChatAPI from '../../services/ChatApi'; 
 
 export default function LoginScreen() {
 
@@ -35,24 +36,79 @@ const navigation = useNavigation();
   }
 
   try {
-    const response = await fetch("http://192.168.1.3:8080/api/auth/login", {
+    const response = await fetch("http://192.168.43.36:8080/api/auth/login", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email, password }),
     });
-     
-    const data = await response.json();
+
+    const data = await response.json(); // correct way to extract response body
+
+    console.log('Login response status:', response.status);
+    console.log('Login response data:', JSON.stringify(data, null, 2)); // ✅ show actual parsed data
 
     if (response.ok) {
-  dispatch(loginSuccess({
-    token: data.token,
-    user: data.user,
-  }));
+      // Check for different possible token field names
+      const token = data.token || data.accessToken || data.access_token || data.authToken;
+      console.log('Login successful, token from response:', token ? token.substring(0, 30) + '...' : 'No token found');
+      console.log('Available fields in response:', Object.keys(data));
+      
+      if (!token) {
+        console.error('No token found in login response!');
+        Alert.alert("Login Error", "No authentication token received from server.");
+        return;
+      }
+      
+      // First set the auth token and wait for it to be stored
+      await ChatAPI.setAuthToken(token);
+      
+      // Test the token immediately by making a simple API call
+      try {
+        console.log('Testing token with a simple API call...');
+        
+        // First try to verify the token with the profile endpoint or a simpler endpoint
+        const profileResponse = await fetch(`http://192.168.43.36:8080/api/auth/profile`, {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          }
+        });
+        
+        if (profileResponse.ok) {
+          console.log('Token validation successful with profile endpoint');
+        } else {
+          console.log('Profile endpoint failed, trying chats endpoint...');
+        }
+        
+        const testResult = await ChatAPI.getUserChatsList();
+        console.log('Token test successful, got chats:', testResult?.length || 0);
+      } catch (tokenTestError) {
+        console.error('Token test failed:', tokenTestError);
+        console.log('Proceeding with login despite token test failure - maybe no chats exist yet');
+        // Don't block login for this - maybe the user just has no chats yet
+      }
+      
+      // Dispatch the login success action
+      dispatch(loginSuccess({
+        token: token,
+        user: data.user,
+      }));
 
-  navigation.reset({ index: 0, routes: [{ name: "Main" }] });
-} else {
-  Alert.alert("Login Failed", data.message || "Invalid credentials");
-}
+      // Reset and connect WebSocket with a longer delay to ensure everything is ready
+      WebSocketService.resetConnection();
+      setTimeout(() => {
+        console.log('Attempting WebSocket connection after login...');
+        WebSocketService.connect();
+      }, 1000);
+      
+      // Add a small delay before navigation to ensure everything is set up
+      setTimeout(() => {
+        navigation.reset({ index: 0, routes: [{ name: "Authenticated" }] });
+      }, 1500);
+    } else {
+      Alert.alert("Login Failed", data.message || "Invalid credentials");
+    }
 
   } catch (error) {
     console.log("Login error:", error);

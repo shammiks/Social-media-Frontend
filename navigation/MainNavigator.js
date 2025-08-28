@@ -2,6 +2,7 @@ import React from "react";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import ChatScreen from "../screens/Chat/ChatScreen";
 import ChatListScreen from "../screens/Chat/ChatListScreen";
+import CreateChatScreen from "../screens/Chat/CreateChatScreen"; // New screen to add
 import FeedScreen from "@/screens/Home/FeedScreen";
 import CreatePostScreen from "@/screens/Post/CreatePostScreen";
 import ProfileScreen from "@/screens/Profile/ProfileScreen";
@@ -72,12 +73,49 @@ const AuthenticatedStack = () => {
           gestureEnabled: true 
         }}
       />
+      {/* Add Chat-related screens */}
+      <Stack.Screen 
+        name="ChatScreen" 
+        component={ChatScreen}
+        options={{
+          headerShown: true,
+          title: 'Chat',
+          headerStyle: {
+            backgroundColor: '#007AFF',
+          },
+          headerTintColor: '#fff',
+          headerTitleStyle: {
+            fontWeight: 'bold',
+          },
+        }}
+      />
+      <Stack.Screen 
+        name="CreateChatScreen" 
+        component={CreateChatScreen}
+        options={{
+          headerShown: true,
+          title: 'New Chat',
+          presentation: 'modal',
+          headerStyle: {
+            backgroundColor: '#007AFF',
+          },
+          headerTintColor: '#fff',
+          headerTitleStyle: {
+            fontWeight: 'bold',
+          },
+        }}
+      />
     </Stack.Navigator>
   );
 };
 
 export default function MainNavigator() {
   const isAuthenticated = useSelector((state) => state.auth.isAuthenticated);
+  const token = useSelector((state) => state.auth.token);
+  
+  // Debug logging
+  console.log('MainNavigator - isAuthenticated:', isAuthenticated);
+  console.log('MainNavigator - has token:', !!token);
 
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>

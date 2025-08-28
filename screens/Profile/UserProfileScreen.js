@@ -590,8 +590,16 @@ const checkFollowStatus = async (targetUserId, headers) => {
 };
 
 const startChat = async () => {
-  // Chat functionality not implemented yet
-  Alert.alert('Coming Soon', 'Chat functionality will be available in a future update');
+  if (!profile) return;
+  
+  Alert.alert(
+    'Chat Feature', 
+    `This would start a conversation with ${profile.username}. Chat functionality is currently being developed.`,
+    [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'OK', style: 'default' }
+    ]
+  );
 };
 
 const renderFollowButton = () => {
@@ -921,8 +929,19 @@ const renderFollowButton = () => {
       </View>
     </View>
 
-    {/* Follow Button */}
-    {profile?.id !== currentUserId && renderFollowButton()}
+    {/* Action Buttons Row */}
+    {profile?.id !== currentUserId && (
+      <View style={styles.actionButtonsRow}>
+        {renderFollowButton()}
+        <TouchableOpacity
+          style={styles.messageButton}
+          onPress={startChat}
+        >
+          <Ionicons name="chatbubble-outline" size={18} color="#007AFF" />
+          <Text style={styles.messageButtonText}>Message</Text>
+        </TouchableOpacity>
+      </View>
+    )}
 
     <Text style={styles.postsTitle}>Posts</Text>
   </>
@@ -1069,13 +1088,35 @@ const styles = StyleSheet.create({
     color: '#666',
     marginTop: 4
   },
+  actionButtonsRow: {
+    flexDirection: 'row',
+    paddingHorizontal: 16,
+    marginBottom: 16,
+    gap: 10,
+  },
   followButton: {
+    flex: 1,
     backgroundColor: '#1e90ff',
     padding: 12,
     borderRadius: 8,
     alignItems: 'center',
-    marginHorizontal: 16,
-    marginBottom: 16,
+  },
+  messageButton: {
+    flex: 1,
+    backgroundColor: '#fff',
+    padding: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#007AFF',
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'center',
+  },
+  messageButtonText: {
+    color: '#007AFF',
+    fontWeight: '600',
+    fontSize: 14,
+    marginLeft: 6,
   },
   followingButton: {
     backgroundColor: '#6c757d'
