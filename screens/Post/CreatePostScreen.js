@@ -17,10 +17,13 @@ import * as DocumentPicker from 'expo-document-picker';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Animated, { FadeInUp } from 'react-native-reanimated';
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
+import { useSelector } from 'react-redux';
 
 const API_URL = 'http://192.168.43.36:8080/api/posts/upload';
 
 const CreatePostScreen = () => {
+  const token = useSelector((state) => state.auth.token);
+  
   const [content, setContent] = useState('');
   const [image, setImage] = useState(null);
   const [video, setVideo] = useState(null);
@@ -94,7 +97,15 @@ const CreatePostScreen = () => {
 
     setLoading(true);
     try {
-      const token = await AsyncStorage.getItem('token');
+      // Add token validation
+      if (!token) {
+        Alert.alert('Authentication Error', 'Please login again to create posts.');
+        setLoading(false);
+        return;
+      }
+
+      console.log('Creating post with token:', token ? 'Token present' : 'No token');
+
       const formData = new FormData();
 
       // Always append content field - empty string if no content for polls

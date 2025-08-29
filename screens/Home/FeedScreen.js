@@ -10,7 +10,7 @@ import * as Animatable from 'react-native-animatable';
 import { StatusBar } from 'expo-status-bar';
 import axios from 'axios';
 import { useSelector } from 'react-redux';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import * as FileSystem from 'expo-file-system';
 import * as MediaLibrary from 'expo-media-library';
 
@@ -210,6 +210,7 @@ export default function FeedScreen() {
   const [imageModal, setImageModal] = useState({ visible: false, imageUrl: null });
   const [downloading, setDownloading] = useState(false);
   const [imageLoading, setImageLoading] = useState(true);
+  const [lastRefresh, setLastRefresh] = useState(0);
   const token = useSelector((state) => state.auth.token);
   const currentUser = useSelector((state) => state.auth.user);
 
@@ -219,27 +220,58 @@ export default function FeedScreen() {
     fetchPosts();
   }, []);
 
+  // Auto-refresh when screen comes into focus (e.g., after creating a post)
+  useFocusEffect(
+    React.useCallback(() => {
+      const now = Date.now();
+      // Only refresh if it's been more than 2 seconds since last refresh and posts exist
+      if (posts.length > 0 && (now - lastRefresh) > 2000) {
+        console.log('FeedScreen focused - refreshing posts');
+        setLastRefresh(now);
+        fetchPosts();
+      }
+    }, [posts.length, lastRefresh])
+  );
+
   const fetchPosts = async () => {
   try {
     setLoading(true);
     
     // Fetch posts and bookmarks in parallel
     const [postsRes, bookmarksRes] = await Promise.all([
-      axios.get(`${BASE_URL}`, { 
-        headers: { Authorization: `Bearer ${token}` } 
+      axios.get(`${BASE_URL}?page=0&size=100&sort=createdAt,desc&t=${Date.now()}`, { 
+        headers: { 
+          Authorization: `Bearer ${token}`,
+          'Cache-Control': 'no-cache',
+          'Pragma': 'no-cache'
+        } 
       }),
       axios.get(`${BOOKMARKS_URL}/my-bookmarks`, { 
         headers: { Authorization: `Bearer ${token}` } 
       })
     ]);
 
+    console.log('FeedScreen posts count:', postsRes.data.content?.length || postsRes.data.length || 0);
+    console.log('Total posts available:', postsRes.data.totalElements || 'N/A');
+    console.log('Current page:', postsRes.data.pageable?.pageNumber || 'N/A');
+    console.log('Total pages:', postsRes.data.totalPages || 'N/A');
+    console.log('First few posts dates:', (postsRes.data.content || postsRes.data).slice(0, 5).map(p => ({
+      id: p.id,
+      createdAt: p.createdAt,
+      content: p.content?.substring(0, 30) + '...',
+      username: p.username
+    })));
+
     // Create a Set of bookmarked post IDs for O(1) lookups
     const bookmarkedPostIds = new Set(
       bookmarksRes.data.map(post => post.id)
     );
 
+    // Handle both paginated and non-paginated responses
+    const postsData = postsRes.data.content || postsRes.data;
+
     // Merge bookmark status and like status into posts
-    const postsWithBookmarks = postsRes.data.content.map(post => ({
+    const postsWithBookmarks = postsData.map(post => ({
       ...post,
       isBookmarkedByCurrentUser: bookmarkedPostIds.has(post.id),
       isLikedByCurrentUser: post.likedByCurrentUser || post.isLikedByCurrentUser || post.isLiked || post.liked || false
@@ -255,6 +287,7 @@ export default function FeedScreen() {
   } finally {
     setLoading(false);
     setRefreshing(false);
+    setLastRefresh(Date.now());
   }
 };
 
