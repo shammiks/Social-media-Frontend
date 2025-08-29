@@ -16,12 +16,15 @@ import {
   Share,
   Dimensions
 } from 'react-native';
-import { useSelector } from 'react-redux';
+import { useSelector, useDispatch } from 'react-redux';
 import axios from 'axios';
 import { Ionicons, Feather, MaterialIcons } from '@expo/vector-icons';
 import { Video } from 'expo-av';
 import * as Animatable from 'react-native-animatable';
 import { API_ENDPOINTS, getUserProfileEndpoint, createAuthHeaders } from '../../utils/apiConfig';
+import ChatAPI from '../../services/ChatApi';
+import { loadChats } from '../../redux/ChatSlice';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const { width } = Dimensions.get('window');
 
@@ -48,7 +51,7 @@ function ReadMoreText({ text, numberOfLines = 3 }) {
 
 
 // Comments Modal Component (unchanged)
-function CommentsModal({ visible, onClose, postId, token }) {
+function CommentsModal({ visible, onClose, postId, token, currentUserId, currentUser }) {
   const [comments, setComments] = useState([]);
   const [newComment, setNewComment] = useState('');
   const [loading, setLoading] = useState(false);
@@ -116,7 +119,25 @@ function CommentsModal({ visible, onClose, postId, token }) {
     <View style={styles.commentItem}>
       <View style={styles.commentHeader}>
         <Image 
-          source={{ uri: `https://ui-avatars.com/api/?name=${item.username}` }} 
+          source={{ 
+            uri: (() => {
+              // For comments, get user ID from various possible fields
+              const commentUserId = item.userId || item.user?.id || item.authorId || item.commenterId;
+              
+              // Check if it's the current user first
+              if (commentUserId === currentUserId && (currentUser?.avatar || currentUser?.profilePicture)) {
+                return currentUser.avatar || currentUser.profilePicture;
+              }
+              // If comment is from the profile owner, use profile data
+              if (commentUserId === (userId || profile?.id) && (profile?.imageUrl || profile?.avatar || profile?.profilePicture)) {
+                return profile.imageUrl || profile.avatar || profile.profilePicture;
+              }
+              // Otherwise check comment user data
+              return item.user?.avatar || item.user?.profilePicture || item.avatar || item.profilePicture
+                ? (item.user?.avatar || item.user?.profilePicture || item.avatar || item.profilePicture)
+                : `https://ui-avatars.com/api/?name=${encodeURIComponent(item.username || 'User')}&background=6C7CE7&color=fff&size=32`;
+            })()
+          }} 
           style={styles.commentAvatar} 
         />
         <View style={styles.commentContent}>
@@ -136,10 +157,7 @@ function CommentsModal({ visible, onClose, postId, token }) {
 
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
-      <KeyboardAvoidingView 
-        style={styles.modalContainer}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      >
+      <View style={styles.modalContainer}>
         <View style={styles.modalHeader}>
           <Text style={styles.modalTitle}>Comments</Text>
           <TouchableOpacity onPress={onClose}>
@@ -153,6 +171,7 @@ function CommentsModal({ visible, onClose, postId, token }) {
           renderItem={renderComment}
           style={styles.commentsList}
           showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
           ListEmptyComponent={() => (
             <View style={styles.emptyComments}>
               {loading ? (
@@ -164,36 +183,43 @@ function CommentsModal({ visible, onClose, postId, token }) {
           )}
         />
 
-        <View style={styles.commentInputContainer}>
-          <TextInput
-            style={styles.commentInput}
-            value={newComment}
-            onChangeText={setNewComment}
-            placeholder="Add a comment..."
-            multiline
-            maxLength={500}
-          />
-          <TouchableOpacity 
-            onPress={addComment}
-            disabled={submitting || !newComment.trim()}
-            style={[styles.sendBtn, { opacity: (submitting || !newComment.trim()) ? 0.5 : 1 }]}
-          >
-            {submitting ? (
-              <ActivityIndicator size="small" color="#fff" />
-            ) : (
-              <Ionicons name="send" size={20} color="#fff" />
-            )}
-          </TouchableOpacity>
-        </View>
-      </KeyboardAvoidingView>
+        <KeyboardAvoidingView 
+          behavior={Platform.OS === 'ios' ? 'padding' : 'position'}
+          keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+        >
+          <View style={styles.commentInputContainer}>
+            <TextInput
+              style={styles.commentInput}
+              value={newComment}
+              onChangeText={setNewComment}
+              placeholder="Add a comment..."
+              multiline
+              maxLength={500}
+            />
+            <TouchableOpacity 
+              onPress={addComment}
+              disabled={submitting || !newComment.trim()}
+              style={[styles.sendBtn, { opacity: (submitting || !newComment.trim()) ? 0.5 : 1 }]}
+            >
+              {submitting ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <Ionicons name="send" size={20} color="#fff" />
+              )}
+            </TouchableOpacity>
+          </View>
+        </KeyboardAvoidingView>
+      </View>
     </Modal>
   );
 }
 
 const UserProfileScreen = ({ route, navigation }) => {
   const { userId, username } = route.params;
+  const dispatch = useDispatch();
   const token = useSelector((state) => state.auth.token);
   const currentUserId = useSelector((state) => state.auth.userId || state.auth.user?.id || state.user?.id);
+  const currentUser = useSelector((state) => state.auth.user);
   const authState = useSelector((state) => state.auth);
   
   // Add token validation
@@ -226,6 +252,7 @@ const UserProfileScreen = ({ route, navigation }) => {
   const [refreshing, setRefreshing] = useState(false);
   const [followLoading, setFollowLoading] = useState(false); // NEW: Prevent duplicate follow requests
   const [followAuthError, setFollowAuthError] = useState(false); // NEW: Track follow auth issues
+  const [chatLoading, setChatLoading] = useState(false); // NEW: Chat creation loading
   const [error, setError] = useState(null);
   const [commentsModal, setCommentsModal] = useState({ visible: false, postId: null });
   const [followCache, setFollowCache] = useState(new Map());
@@ -425,7 +452,8 @@ const checkFollowStatus = async (targetUserId, headers) => {
 
     const postsWithBookmarks = (postsRes.data.content || []).map(post => ({
       ...post,
-      isBookmarkedByCurrentUser: bookmarkedPostIds.has(post.id)
+      isBookmarkedByCurrentUser: bookmarkedPostIds.has(post.id),
+      isLikedByCurrentUser: post.likedByCurrentUser || post.isLikedByCurrentUser || post.isLiked || post.liked || false
     }));
 
     setPosts(postsWithBookmarks);
@@ -467,7 +495,6 @@ const checkFollowStatus = async (targetUserId, headers) => {
   // IMPROVED: Better follow handling with loading state and optimistic updates
   const handleFollow = async () => {
   if (followLoading) {
-    console.log('Follow request already in progress, ignoring...');
     return;
   }
 
@@ -589,17 +616,71 @@ const checkFollowStatus = async (targetUserId, headers) => {
   }
 };
 
+// Cache user information for chat list display
+const cacheUserForChat = async (userData) => {
+  try {
+    const cached = await AsyncStorage.getItem('userCache');
+    const userCache = cached ? new Map(JSON.parse(cached)) : new Map();
+    userCache.set(userData.id.toString(), userData);
+    await AsyncStorage.setItem('userCache', JSON.stringify([...userCache]));
+  } catch (error) {
+    // Silent failure for cache saving
+  }
+};
+
 const startChat = async () => {
-  if (!profile) return;
+  if (!profile || chatLoading) return;
   
-  Alert.alert(
-    'Chat Feature', 
-    `This would start a conversation with ${profile.username}. Chat functionality is currently being developed.`,
-    [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'OK', style: 'default' }
-    ]
-  );
+  try {
+    setChatLoading(true);
+    
+    // Cache user information for chat list display
+    await cacheUserForChat({
+      id: profile.id,
+      username: profile.username,
+      displayName: profile.displayName || profile.username,
+      imageUrl: profile.imageUrl
+    });
+    
+    // Call createChat with individual parameters as expected by the API
+    const response = await ChatAPI.createChat(
+      [profile.id], // participantIds array
+      '', // chatName (empty for private chats)
+      'PRIVATE', // chatType
+      '', // chatImageUrl
+      '' // description
+    );
+    
+    if (response && response.id) {
+      // Wait a moment for backend to populate participant details, then refresh
+      setTimeout(() => {
+        dispatch(loadChats());
+      }, 1000);
+      
+      // Navigate directly to the chat screen with additional user context
+      navigation.navigate('ChatScreen', { 
+        chat: response,
+        // Pass the target user info for display purposes
+        targetUser: {
+          id: profile.id,
+          username: profile.username,
+          displayName: profile.displayName || profile.username,
+          imageUrl: profile.imageUrl
+        }
+      });
+    } else {
+      throw new Error('Invalid response from server');
+    }
+  } catch (error) {
+    console.error('Error creating chat:', error);
+    Alert.alert(
+      'Error', 
+      error.message || 'Failed to create chat. Please try again.',
+      [{ text: 'OK' }]
+    );
+  } finally {
+    setChatLoading(false);
+  }
 };
 
 const renderFollowButton = () => {
@@ -667,26 +748,52 @@ const renderFollowButton = () => {
 };
 
 
-  // Like functionality (unchanged)
+  // Like functionality with optimistic updates
   const handleLike = async (postId) => {
+    // Optimistic update - immediately update UI
+    setPosts(prev =>
+      prev.map(post =>
+        post.id === postId
+          ? { 
+              ...post, 
+              isLikedByCurrentUser: !post.isLikedByCurrentUser,
+              likes: post.isLikedByCurrentUser ? post.likes - 1 : post.likes + 1
+            }
+          : post
+      )
+    );
+
     try {
       const res = await axios.post(`${API_ENDPOINTS.POSTS}/${postId}/like`, {}, {
         headers: { Authorization: `Bearer ${token}` }
       });
 
+      // Update with server response for consistency
       setPosts(prev =>
         prev.map(post =>
           post.id === postId
             ? { 
                 ...post, 
-                likes: res.data.likesCount,
-                isLikedByCurrentUser: res.data.isLiked
+                likes: res.data.likesCount || res.data.likes,
+                isLikedByCurrentUser: res.data.isLiked || res.data.likedByCurrentUser || res.data.liked
               }
             : post
         )
       );
     } catch (err) {
       console.error('Like error:', err.message);
+      // Revert optimistic update on error
+      setPosts(prev =>
+        prev.map(post =>
+          post.id === postId
+            ? { 
+                ...post, 
+                isLikedByCurrentUser: !post.isLikedByCurrentUser,
+                likes: post.isLikedByCurrentUser ? post.likes + 1 : post.likes - 1
+              }
+            : post
+        )
+      );
       Alert.alert('Error', 'Failed to like post');
     }
   };
@@ -750,10 +857,10 @@ const renderFollowButton = () => {
         if (result.activityType) {
           console.log('Shared with:', result.activityType);
         } else {
-          console.log('Post shared successfully');
+          // Share successful
         }
       } else if (result.action === Share.dismissedAction) {
-        console.log('Share dismissed');
+        // Share dismissed
       }
     } catch (error) {
       console.error('Share error:', error.message);
@@ -794,7 +901,26 @@ const renderFollowButton = () => {
   const renderPost = ({ item, index }) => (
     <Animatable.View animation="slideInUp" delay={index * 150} style={styles.card}>
       <View style={styles.userRow}>
-        <Image source={{ uri: `https://ui-avatars.com/api/?name=${item.username}` }} style={styles.avatar} />
+        <Image 
+          source={{ 
+            uri: (() => {
+              // In UserProfileScreen, all posts belong to the profile being viewed
+              // So use the profile data for avatar, not the individual post user data
+              if (profile?.imageUrl || profile?.avatar || profile?.profilePicture) {
+                return profile.imageUrl || profile.avatar || profile.profilePicture;
+              }
+              // If it's the current user's profile, use their avatar from Redux
+              if (currentUserId === (userId || profile?.id) && (currentUser?.avatar || currentUser?.profilePicture)) {
+                return currentUser.avatar || currentUser.profilePicture;
+              }
+              // Fallback to post user data
+              return item.user?.avatar || item.user?.profilePicture || item.avatar || item.profilePicture
+                ? (item.user?.avatar || item.user?.profilePicture || item.avatar || item.profilePicture)
+                : `https://ui-avatars.com/api/?name=${encodeURIComponent(item.username || profile?.username || 'User')}&background=6C7CE7&color=fff&size=40`;
+            })()
+          }} 
+          style={styles.avatar} 
+        />
         <View style={styles.userInfo}>
           <Text style={styles.username}>{item.username}</Text>
           <Text style={styles.postTime}>{new Date(item.createdAt).toLocaleDateString()}</Text>
@@ -913,7 +1039,9 @@ const renderFollowButton = () => {
     <View style={styles.profileInfo}>
       <Image 
         source={{ 
-          uri: profile?.imageUrl || `https://ui-avatars.com/api/?name=${profile?.username}&background=random` 
+          uri: profile?.imageUrl || profile?.avatar || profile?.profilePicture
+            ? (profile.imageUrl || profile.avatar || profile.profilePicture)
+            : `https://ui-avatars.com/api/?name=${encodeURIComponent(profile?.username || 'User')}&background=6C7CE7&color=fff&size=80`
         }} 
         style={styles.profileAvatar} 
       />
@@ -934,11 +1062,21 @@ const renderFollowButton = () => {
       <View style={styles.actionButtonsRow}>
         {renderFollowButton()}
         <TouchableOpacity
-          style={styles.messageButton}
+          style={[
+            styles.messageButton,
+            chatLoading && styles.messageButtonDisabled
+          ]}
           onPress={startChat}
+          disabled={chatLoading}
         >
-          <Ionicons name="chatbubble-outline" size={18} color="#007AFF" />
-          <Text style={styles.messageButtonText}>Message</Text>
+          {chatLoading ? (
+            <ActivityIndicator size="small" color="#007AFF" />
+          ) : (
+            <Ionicons name="chatbubble-outline" size={18} color="#007AFF" />
+          )}
+          <Text style={styles.messageButtonText}>
+            {chatLoading ? 'Creating...' : 'Message'}
+          </Text>
         </TouchableOpacity>
       </View>
     )}
@@ -968,6 +1106,8 @@ const renderFollowButton = () => {
         onClose={closeComments}
         postId={commentsModal.postId}
         token={token}
+        currentUserId={currentUserId}
+        currentUser={currentUser}
       />
     </View>
   );
@@ -1111,6 +1251,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     flexDirection: 'row',
     justifyContent: 'center',
+  },
+  messageButtonDisabled: {
+    opacity: 0.6,
+    backgroundColor: '#f8f8f8',
   },
   messageButtonText: {
     color: '#007AFF',
@@ -1307,6 +1451,8 @@ const styles = StyleSheet.create({
     padding: 16,
     borderTopWidth: 1,
     borderTopColor: '#eee',
+    backgroundColor: '#fff',
+    minHeight: 60,
   },
   commentInput: {
     flex: 1,

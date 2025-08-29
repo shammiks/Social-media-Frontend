@@ -24,7 +24,6 @@ class WebSocketService {
 
   async connect() {
     if (this.isConnected || this.isConnecting) {
-      console.log('WebSocket already connected or connecting');
       return;
     }
 
@@ -48,19 +47,15 @@ class WebSocketService {
       try {
         const payload = JSON.parse(atob(token.split('.')[1]));
         this.currentUserId = payload.sub || payload.userId; // Adjust based on your JWT structure
-        console.log('Extracted user ID from token:', this.currentUserId);
       } catch (e) {
         console.error('Could not extract user ID from token:', e);
       }
-
-      console.log('Attempting WebSocket connection with token:', token.substring(0, 20) + '...');
 
       this.client = new Client({
         webSocketFactory: () => new SockJS(`${this.baseURL}/ws`),
         connectHeaders: {
           'Authorization': `Bearer ${token}`,
         },
-        debug: (str) => console.log('STOMP Debug:', str),
         
         reconnectDelay: 0,
         maxReconnectAttempts: 0,
@@ -69,7 +64,6 @@ class WebSocketService {
         heartbeatOutgoing: 10000,
         
         onConnect: (frame) => {
-          console.log('WebSocket connected successfully');
           this.isConnected = true;
           this.isConnecting = false;
           this.reconnectAttempts = 0;
@@ -82,7 +76,6 @@ class WebSocketService {
         },
         
         onDisconnect: (frame) => {
-          console.log('WebSocket disconnected');
           this.isConnected = false;
           this.isConnecting = false;
           
@@ -132,7 +125,6 @@ class WebSocketService {
   }
 
   disconnect() {
-    console.log('Disconnecting WebSocket...');
     this.shouldReconnect = false;
     
     if (this.reconnectTimer) {
@@ -164,7 +156,6 @@ class WebSocketService {
     }
     
     if (!this.shouldReconnect) {
-      console.log('Reconnection disabled, not attempting to reconnect');
       return;
     }
     
@@ -172,15 +163,10 @@ class WebSocketService {
       this.reconnectAttempts++;
       const delay = Math.min(5000 * this.reconnectAttempts, 30000);
       
-      console.log(`Scheduling reconnection attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts} in ${delay}ms`);
-      
       this.reconnectTimer = setTimeout(async () => {
         if (this.shouldReconnect && !this.isConnected && !this.isConnecting) {
-          console.log(`Reconnection attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts}`);
-          
           const token = await AsyncStorage.getItem('authToken');
           if (!token) {
-            console.log('No token available, stopping reconnection attempts');
             this.shouldReconnect = false;
             return;
           }
@@ -195,7 +181,6 @@ class WebSocketService {
   }
 
   retryConnection() {
-    console.log('Manual connection retry requested');
     this.shouldReconnect = true;
     this.reconnectAttempts = 0;
     this.connect();
@@ -223,29 +208,45 @@ class WebSocketService {
   // Subscribe to user-specific queues for receiving messages
   subscribeToUserQueues() {
     if (!this.client || !this.isConnected || !this.currentUserId) {
-      console.warn('Cannot subscribe to user queues - not connected or no user ID');
       return;
     }
-
-    console.log('Subscribing to user queues for user:', this.currentUserId);
 
     // Subscribe to message queue
     this.client.subscribe(`/user/${this.currentUserId}/queue/messages`, (message) => {
       try {
         const data = JSON.parse(message.body);
-        console.log('Received message via WebSocket:', data);
         
         if (this.dispatch) {
           // Handle different message types
           switch (data.type) {
             case 'NEW_MESSAGE':
-              this.dispatch({ type: 'chat/messageReceived', payload: data.data });
+              // Dispatch the action directly
+              this.dispatch({
+                type: 'chat/addMessageViaSocket',
+                payload: { 
+                  chatId: data.data.chatId, 
+                  message: data.data 
+                }
+              });
               break;
             case 'MESSAGE_UPDATED':
-              this.dispatch({ type: 'chat/messageUpdated', payload: data.data });
+              this.dispatch({
+                type: 'chat/updateMessageViaSocket',
+                payload: {
+                  chatId: data.data.chatId,
+                  messageId: data.data.id,
+                  updates: data.data
+                }
+              });
               break;
             case 'MESSAGE_DELETED':
-              this.dispatch({ type: 'chat/messageDeleted', payload: data.data });
+              this.dispatch({
+                type: 'chat/deleteMessageViaSocket',
+                payload: {
+                  chatId: data.data.chatId,
+                  messageId: data.data.id
+                }
+              });
               break;
           }
         }
@@ -260,11 +261,10 @@ class WebSocketService {
         const data = JSON.parse(message.body);
         if (this.dispatch && data.type === 'TYPING_INDICATOR') {
           this.dispatch({ 
-            type: 'chat/typingIndicator', 
+            type: 'chat/setTypingUsers', 
             payload: {
               chatId: data.data.chatId,
-              userId: data.data.userId,
-              isTyping: data.data.isTyping
+              users: data.data.isTyping ? [data.data.userId] : []
             }
           });
         }
@@ -321,7 +321,6 @@ class WebSocketService {
     this.client.subscribe(`/user/${this.currentUserId}/queue/notifications`, (message) => {
       try {
         const data = JSON.parse(message.body);
-        console.log('Received notification:', data);
         // Handle notifications as needed
       } catch (error) {
         console.error('Error parsing notification:', error);
@@ -343,7 +342,6 @@ class WebSocketService {
 
   // Legacy methods for backward compatibility - now using user queues
   subscribeToChat(chatId, dispatch) {
-    console.log('subscribeToChat called - using user queues instead');
     // Store dispatch for handling messages
     if (dispatch) {
       this.setDispatch(dispatch);
@@ -356,12 +354,10 @@ class WebSocketService {
   }
 
   unsubscribeFromChat(chatId) {
-    console.log('unsubscribeFromChat called - user queues handle all messages');
     // User queues handle all messages, so no need to unsubscribe from specific chats
   }
 
   subscribeToUserNotifications(userId, onNotification) {
-    console.log('subscribeToUserNotifications called - using user queues instead');
     // Handled by subscribeToUserQueues
   }
 

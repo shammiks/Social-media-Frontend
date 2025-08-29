@@ -65,9 +65,20 @@ const dispatch = useDispatch();
         })
       ]);
       
-      // Sort posts by createdAt in descending order (newest first)
-      const sortedMyPosts = myPostsRes.data.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-      const sortedSavedPosts = savedPostsRes.data.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+      // Sort posts by createdAt in descending order (newest first) and ensure like status
+      const sortedMyPosts = myPostsRes.data
+        .map(post => ({
+          ...post,
+          isLikedByCurrentUser: post.likedByCurrentUser || post.isLikedByCurrentUser || post.isLiked || post.liked || false
+        }))
+        .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+      
+      const sortedSavedPosts = savedPostsRes.data
+        .map(post => ({
+          ...post,
+          isLikedByCurrentUser: post.likedByCurrentUser || post.isLikedByCurrentUser || post.isLiked || post.liked || false
+        }))
+        .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
       
       setPosts(sortedMyPosts);
       setSavedPosts(sortedSavedPosts);
@@ -164,38 +175,92 @@ const dispatch = useDispatch();
   };
 
   const handleLike = async (postId) => {
+    // Find the current post to determine current like state
+    const currentPost = posts.find(p => p.id === postId) || savedPosts.find(p => p.id === postId);
+    
+    // Optimistic update - immediately update UI for both posts and savedPosts
+    setPosts(prev =>
+      prev.map(post =>
+        post.id === postId
+          ? { 
+              ...post, 
+              isLikedByCurrentUser: !post.isLikedByCurrentUser,
+              likes: post.isLikedByCurrentUser ? post.likes - 1 : post.likes + 1
+            }
+          : post
+      )
+    );
+
+    setSavedPosts(prev =>
+      prev.map(post =>
+        post.id === postId
+          ? { 
+              ...post, 
+              isLikedByCurrentUser: !post.isLikedByCurrentUser,
+              likes: post.isLikedByCurrentUser ? post.likes - 1 : post.likes + 1
+            }
+          : post
+      )
+    );
+
     try {
       const res = await axios.post(`${BASE_URL}/api/posts/${postId}/like`, {}, {
         headers: { Authorization: `Bearer ${token}` }
       });
 
-      // Update posts state
+      // Update with server response for consistency
+      const serverLikeState = res.data.isLiked || res.data.likedByCurrentUser || res.data.liked;
+      const serverLikeCount = res.data.likesCount || res.data.likes;
+
       setPosts(prev =>
         prev.map(post =>
           post.id === postId
             ? { 
                 ...post, 
-                likes: res.data.likesCount,
-                isLikedByCurrentUser: res.data.isLiked
+                likes: serverLikeCount,
+                isLikedByCurrentUser: serverLikeState
               }
             : post
         )
       );
 
-      // Update savedPosts state if needed
       setSavedPosts(prev =>
         prev.map(post =>
           post.id === postId
             ? { 
                 ...post, 
-                likes: res.data.likesCount,
-                isLikedByCurrentUser: res.data.isLiked
+                likes: serverLikeCount,
+                isLikedByCurrentUser: serverLikeState
               }
             : post
         )
       );
     } catch (err) {
       console.error('Like error:', err.message);
+      // Revert optimistic update on error
+      setPosts(prev =>
+        prev.map(post =>
+          post.id === postId
+            ? { 
+                ...post, 
+                isLikedByCurrentUser: !post.isLikedByCurrentUser,
+                likes: post.isLikedByCurrentUser ? post.likes + 1 : post.likes - 1
+              }
+            : post
+        )
+      );
+      
+      setSavedPosts(prev =>
+        prev.map(post =>
+          post.id === postId
+            ? { 
+                ...post, 
+                isLikedByCurrentUser: !post.isLikedByCurrentUser,
+                likes: post.isLikedByCurrentUser ? post.likes + 1 : post.likes - 1
+              }
+            : post
+        )
+      );
       Alert.alert('Error', 'Failed to like post');
     }
   };
@@ -263,7 +328,21 @@ const dispatch = useDispatch();
     <View style={styles.commentItem}>
       <View style={styles.commentHeader}>
         <Image 
-          source={{ uri: `https://ui-avatars.com/api/?name=${item.username}` }} 
+          source={{ 
+            uri: (() => {
+              // For comments, get user ID from various possible fields
+              const commentUserId = item.userId || item.user?.id || item.authorId || item.commenterId;
+              
+              // Check if it's the current user first (since this is ProfileScreen, use user from Redux)
+              if (commentUserId === user?.id && (user?.avatar || user?.profilePicture)) {
+                return user.avatar || user.profilePicture;
+              }
+              // Otherwise check comment user data
+              return item.user?.avatar || item.user?.profilePicture || item.avatar || item.profilePicture
+                ? (item.user?.avatar || item.user?.profilePicture || item.avatar || item.profilePicture)
+                : `https://ui-avatars.com/api/?name=${encodeURIComponent(item.username || 'User')}&background=6C7CE7&color=fff&size=32`;
+            })()
+          }} 
           style={styles.commentAvatar} 
         />
         <View style={styles.commentContent}>
@@ -271,7 +350,7 @@ const dispatch = useDispatch();
           <Text style={styles.commentText}>{item.content}</Text>
           <Text style={styles.commentTime}>{new Date(item.createdAt).toLocaleDateString()}</Text>
         </View>
-        {item.userId === user.id && (
+        {(item.userId || item.user?.id || item.authorId || item.commenterId) === user.id && (
           <TouchableOpacity 
             onPress={() => deleteComment(item.id)}
             style={styles.deleteCommentBtn}
@@ -339,7 +418,18 @@ const dispatch = useDispatch();
         {/* Post Header */}
         <View style={styles.userRow}>
           <Image 
-            source={{ uri: item.user?.avatar || `https://ui-avatars.com/api/?name=${item.username}` }} 
+            source={{ 
+              uri: (() => {
+                // For posts in ProfileScreen, prioritize current user's avatar since these are mostly your posts
+                if (user?.avatar || user?.profilePicture) {
+                  return user.avatar || user.profilePicture;
+                }
+                // Fallback to post user data
+                return item.user?.avatar || item.user?.profilePicture || item.avatar || item.profilePicture
+                  ? (item.user?.avatar || item.user?.profilePicture || item.avatar || item.profilePicture)
+                  : `https://ui-avatars.com/api/?name=${encodeURIComponent(item.username || 'User')}&background=6C7CE7&color=fff&size=40`;
+              })()
+            }} 
             style={styles.postAvatar} 
           />
           <View style={styles.userInfo}>
@@ -573,10 +663,7 @@ const dispatch = useDispatch();
         </View>
       </PagerView>
        <Modal visible={commentsModal.visible} animationType="slide" onRequestClose={closeComments}>
-        <KeyboardAvoidingView 
-          style={styles.modalContainer}
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        >
+        <View style={styles.modalContainer}>
           <View style={styles.modalHeader}>
             <Text style={styles.modalTitle}>Comments</Text>
             <TouchableOpacity onPress={closeComments}>
@@ -590,6 +677,7 @@ const dispatch = useDispatch();
             renderItem={renderComment}
             style={styles.commentsList}
             showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
             ListEmptyComponent={() => (
               <View style={styles.emptyComments}>
                 {commentsLoading ? (
@@ -601,24 +689,29 @@ const dispatch = useDispatch();
             )}
           />
 
-          <View style={styles.commentInputContainer}>
-            <TextInput
-              style={styles.commentInput}
-              value={newComment}
-              onChangeText={setNewComment}
-              placeholder="Add a comment..."
-              multiline
-              maxLength={500}
-            />
-            <TouchableOpacity 
-              onPress={addComment}
-              disabled={!newComment.trim()}
-              style={[styles.sendBtn, { opacity: !newComment.trim() ? 0.5 : 1 }]}
-            >
-              <Ionicons name="send" size={20} color="#fff" />
-            </TouchableOpacity>
-          </View>
-        </KeyboardAvoidingView>
+          <KeyboardAvoidingView 
+            behavior={Platform.OS === 'ios' ? 'padding' : 'position'}
+            keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+          >
+            <View style={styles.commentInputContainer}>
+              <TextInput
+                style={styles.commentInput}
+                value={newComment}
+                onChangeText={setNewComment}
+                placeholder="Add a comment..."
+                multiline
+                maxLength={500}
+              />
+              <TouchableOpacity 
+                onPress={addComment}
+                disabled={!newComment.trim()}
+                style={[styles.sendBtn, { opacity: !newComment.trim() ? 0.5 : 1 }]}
+              >
+                <Ionicons name="send" size={20} color="#fff" />
+              </TouchableOpacity>
+            </View>
+          </KeyboardAvoidingView>
+        </View>
       </Modal>
 
       {/* Full Screen Image Modal */}
@@ -1003,6 +1096,8 @@ const styles = StyleSheet.create({
     padding: 16,
     borderTopWidth: 1,
     borderTopColor: '#eee',
+    backgroundColor: '#fff',
+    minHeight: 60,
   },
   commentInput: {
     flex: 1,

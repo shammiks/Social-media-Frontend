@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import {
   View, Text, FlatList, Image, TouchableOpacity,
   StyleSheet, Dimensions, ActivityIndicator, Alert,
-  Modal, TextInput, KeyboardAvoidingView, Platform, Share
+  Modal, TextInput, KeyboardAvoidingView, Platform, Share, Linking
 } from 'react-native';
 import { Video } from 'expo-av';
 import { Ionicons, Feather, MaterialIcons } from '@expo/vector-icons';
@@ -16,6 +16,7 @@ import * as MediaLibrary from 'expo-media-library';
 
 const { width } = Dimensions.get('window');
 const BASE_URL = 'http://192.168.43.36:8080/api/posts';
+const SERVER_BASE_URL = 'http://192.168.43.36:8080';
 const COMMENTS_URL = 'http://192.168.43.36:8080/api/comments';
 const BOOKMARKS_URL = 'http://192.168.43.36:8080/api/bookmarks';
 
@@ -39,7 +40,7 @@ function ReadMoreText({ text, numberOfLines = 3 }) {
   );
 }
 
-function CommentsModal({ visible, onClose, postId, token }) {
+function CommentsModal({ visible, onClose, postId, token, currentUser }) {
   const [comments, setComments] = useState([]);
   const [newComment, setNewComment] = useState('');
   const [loading, setLoading] = useState(false);
@@ -107,7 +108,21 @@ function CommentsModal({ visible, onClose, postId, token }) {
     <View style={styles.commentItem}>
       <View style={styles.commentHeader}>
         <Image 
-          source={{ uri: `https://ui-avatars.com/api/?name=${item.username}` }} 
+          source={{ 
+            uri: (() => {
+              // For comments, get user ID from various possible fields
+              const commentUserId = item.userId || item.user?.id || item.authorId || item.commenterId;
+              
+              // Check if it's the current user first
+              if (commentUserId === currentUser?.id && (currentUser?.avatar || currentUser?.profilePicture)) {
+                return currentUser.avatar || currentUser.profilePicture;
+              }
+              // Otherwise check comment user data
+              return item.user?.profilePicture || item.profilePicture || item.user?.avatar
+                ? (item.user?.profilePicture || item.profilePicture || item.user?.avatar) 
+                : `https://ui-avatars.com/api/?name=${encodeURIComponent(item.username || 'User')}&background=6C7CE7&color=fff&size=32`;
+            })()
+          }} 
           style={styles.commentAvatar} 
         />
         <View style={styles.commentContent}>
@@ -115,22 +130,22 @@ function CommentsModal({ visible, onClose, postId, token }) {
           <Text style={styles.commentText}>{item.content}</Text>
           <Text style={styles.commentTime}>{new Date(item.createdAt).toLocaleDateString()}</Text>
         </View>
-        <TouchableOpacity 
-          onPress={() => deleteComment(item.id)}
-          style={styles.deleteCommentBtn}
-        >
-          <Ionicons name="trash-outline" size={16} color="#999" />
-        </TouchableOpacity>
+        {/* Only show delete button for current user's comments */}
+        {(item.userId || item.user?.id || item.authorId || item.commenterId) === currentUser?.id && (
+          <TouchableOpacity 
+            onPress={() => deleteComment(item.id)}
+            style={styles.deleteCommentBtn}
+          >
+            <Ionicons name="trash-outline" size={16} color="#999" />
+          </TouchableOpacity>
+        )}
       </View>
     </View>
   );
 
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
-      <KeyboardAvoidingView 
-        style={styles.modalContainer}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      >
+      <View style={styles.modalContainer}>
         <View style={styles.modalHeader}>
           <Text style={styles.modalTitle}>Comments</Text>
           <TouchableOpacity onPress={onClose}>
@@ -144,6 +159,7 @@ function CommentsModal({ visible, onClose, postId, token }) {
           renderItem={renderComment}
           style={styles.commentsList}
           showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
           ListEmptyComponent={() => (
             <View style={styles.emptyComments}>
               {loading ? (
@@ -155,28 +171,33 @@ function CommentsModal({ visible, onClose, postId, token }) {
           )}
         />
 
-        <View style={styles.commentInputContainer}>
-          <TextInput
-            style={styles.commentInput}
-            value={newComment}
-            onChangeText={setNewComment}
-            placeholder="Add a comment..."
-            multiline
-            maxLength={500}
-          />
-          <TouchableOpacity 
-            onPress={addComment}
-            disabled={submitting || !newComment.trim()}
-            style={[styles.sendBtn, { opacity: (submitting || !newComment.trim()) ? 0.5 : 1 }]}
-          >
-            {submitting ? (
-              <ActivityIndicator size="small" color="#fff" />
-            ) : (
-              <Ionicons name="send" size={20} color="#fff" />
-            )}
-          </TouchableOpacity>
-        </View>
-      </KeyboardAvoidingView>
+        <KeyboardAvoidingView 
+          behavior={Platform.OS === 'ios' ? 'padding' : 'position'}
+          keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+        >
+          <View style={styles.commentInputContainer}>
+            <TextInput
+              style={styles.commentInput}
+              value={newComment}
+              onChangeText={setNewComment}
+              placeholder="Add a comment..."
+              multiline
+              maxLength={500}
+            />
+            <TouchableOpacity 
+              onPress={addComment}
+              disabled={submitting || !newComment.trim()}
+              style={[styles.sendBtn, { opacity: (submitting || !newComment.trim()) ? 0.5 : 1 }]}
+            >
+              {submitting ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <Ionicons name="send" size={20} color="#fff" />
+              )}
+            </TouchableOpacity>
+          </View>
+        </KeyboardAvoidingView>
+      </View>
     </Modal>
   );
 }
@@ -190,6 +211,7 @@ export default function FeedScreen() {
   const [downloading, setDownloading] = useState(false);
   const [imageLoading, setImageLoading] = useState(true);
   const token = useSelector((state) => state.auth.token);
+  const currentUser = useSelector((state) => state.auth.user);
 
   const navigation = useNavigation();
 
@@ -216,10 +238,11 @@ export default function FeedScreen() {
       bookmarksRes.data.map(post => post.id)
     );
 
-    // Merge bookmark status into posts
+    // Merge bookmark status and like status into posts
     const postsWithBookmarks = postsRes.data.content.map(post => ({
       ...post,
-      isBookmarkedByCurrentUser: bookmarkedPostIds.has(post.id)
+      isBookmarkedByCurrentUser: bookmarkedPostIds.has(post.id),
+      isLikedByCurrentUser: post.likedByCurrentUser || post.isLikedByCurrentUser || post.isLiked || post.liked || false
     }));
 
     // Sort posts by createdAt in descending order (newest first)
@@ -236,24 +259,50 @@ export default function FeedScreen() {
 };
 
   const handleLike = async (postId) => {
+    // Optimistic update - immediately update UI
+    setPosts(prev =>
+      prev.map(post =>
+        post.id === postId
+          ? { 
+              ...post, 
+              isLikedByCurrentUser: !post.isLikedByCurrentUser,
+              likes: post.isLikedByCurrentUser ? post.likes - 1 : post.likes + 1
+            }
+          : post
+      )
+    );
+
     try {
       const res = await axios.post(`${BASE_URL}/${postId}/like`, {}, {
         headers: { Authorization: `Bearer ${token}` }
       });
 
+      // Update with server response to ensure consistency
       setPosts(prev =>
         prev.map(post =>
           post.id === postId
             ? { 
                 ...post, 
-                likes: res.data.likesCount,
-                isLikedByCurrentUser: res.data.isLiked
+                likes: res.data.likesCount || res.data.likes,
+                isLikedByCurrentUser: res.data.isLiked || res.data.likedByCurrentUser || res.data.liked
               }
             : post
         )
       );
     } catch (err) {
       console.error('Like error:', err.message);
+      // Revert optimistic update on error
+      setPosts(prev =>
+        prev.map(post =>
+          post.id === postId
+            ? { 
+                ...post, 
+                isLikedByCurrentUser: !post.isLikedByCurrentUser,
+                likes: post.isLikedByCurrentUser ? post.likes + 1 : post.likes - 1
+              }
+            : post
+        )
+      );
       Alert.alert('Error', 'Failed to like post');
     }
   };
@@ -263,9 +312,6 @@ export default function FeedScreen() {
     const res = await axios.post(`${BOOKMARKS_URL}/${postId}`, {}, {
       headers: { Authorization: `Bearer ${token}` }
     });
-
-        console.log('Bookmark response:', res.data);
-
 
        const isBookmarked = res.data.bookmarked;
 
@@ -317,15 +363,12 @@ export default function FeedScreen() {
 
       if (result.action === Share.sharedAction) {
         if (result.activityType) {
-          // Shared with activity type of result.activityType
-          console.log('Shared with:', result.activityType);
+          // Shared with activity type
         } else {
-          // Shared
-          console.log('Post shared successfully');
+          // Shared successfully
         }
       } else if (result.action === Share.dismissedAction) {
-        // Dismissed
-        console.log('Share dismissed');
+        // Share dismissed
       }
     } catch (error) {
       console.error('Share error:', error.message);
@@ -341,16 +384,25 @@ export default function FeedScreen() {
     setCommentsModal({ visible: false, postId: null });
   };
 
-  const renderPost = ({ item, index }) => (
-    
+  const renderPost = ({ item, index }) => {
+    // Construct proper URLs for media files
+    const imageUrl = item.imageUrl
+      ? item.imageUrl.startsWith('http') ? item.imageUrl : `${SERVER_BASE_URL}${item.imageUrl}`
+      : null;
+
+    const videoUrl = item.videoUrl
+      ? item.videoUrl.startsWith('http') ? item.videoUrl : `${SERVER_BASE_URL}${item.videoUrl}`
+      : null;
+
+    const pdfUrl = item.pdfUrl
+      ? item.pdfUrl.startsWith('http') ? item.pdfUrl : `${SERVER_BASE_URL}${item.pdfUrl}`
+      : null;
+
+    return (
     <Animatable.View animation="slideInUp" delay={index * 150} style={styles.card}>
      <TouchableOpacity 
   style={styles.userRow}
   onPress={() => {
-    console.log('Navigation params being passed:', { 
-      username: item.username 
-    });
-    
     if (!item.username) {
       Alert.alert('Error', 'User information is not available');
       return;
@@ -362,7 +414,21 @@ export default function FeedScreen() {
     });
   }}
 >
-      <Image source={{ uri: `https://ui-avatars.com/api/?name=${item.username}` }} style={styles.avatar} />
+      <Image 
+        source={{ 
+          uri: (() => {
+            // If it's the current user's post, use their profile picture
+            if (item.userId === currentUser?.id && (currentUser?.avatar || currentUser?.profilePicture)) {
+              return currentUser.avatar || currentUser.profilePicture;
+            }
+            // Otherwise use post user's profile picture or fallback
+            return item.user?.profilePicture || item.profilePicture || item.user?.avatar
+              ? (item.user?.profilePicture || item.profilePicture || item.user?.avatar) 
+              : `https://ui-avatars.com/api/?name=${encodeURIComponent(item.username || 'User')}&background=6C7CE7&color=fff&size=40`;
+          })()
+        }} 
+        style={styles.avatar} 
+      />
       <View style={styles.userInfo}>
         <Text style={styles.username}>{item.username}</Text>
         <Text style={styles.postTime}>{new Date(item.createdAt).toLocaleDateString()}</Text>
@@ -381,14 +447,14 @@ export default function FeedScreen() {
 
       <View style={styles.contentArea}>
         {item.content && <ReadMoreText text={item.content} />}
-        {item.imageUrl && (
-          <TouchableOpacity onPress={() => openImageModal(item.imageUrl)}>
-            <Image source={{ uri: item.imageUrl }} style={styles.postImage} resizeMode="cover" />
+        {imageUrl && (
+          <TouchableOpacity onPress={() => openImageModal(imageUrl)}>
+            <Image source={{ uri: imageUrl }} style={styles.postImage} resizeMode="cover" />
           </TouchableOpacity>
         )}
-        {item.videoUrl && (
+        {videoUrl && (
           <Video
-            source={{ uri: item.videoUrl }}
+            source={{ uri: videoUrl }}
             rate={1.0}
             volume={1.0}
             isMuted={false}
@@ -397,8 +463,8 @@ export default function FeedScreen() {
             style={styles.video}
           />
         )}
-        {item.pdfUrl && (
-          <TouchableOpacity onPress={() => Alert.alert('PDF tapped', item.pdfUrl)}>
+        {pdfUrl && (
+          <TouchableOpacity onPress={() => Linking.openURL(pdfUrl)}>
             <View style={styles.pdfContainer}>
               <MaterialIcons name="picture-as-pdf" size={24} color="#ff4444" />
               <Text style={styles.pdfText}>View attached PDF</Text>
@@ -437,7 +503,8 @@ export default function FeedScreen() {
         </TouchableOpacity>
       </View>
     </Animatable.View>
-  );
+    );
+  };
 
   const handleNotificationPress = () => {
     // Navigate to notifications screen when implemented
@@ -531,6 +598,7 @@ export default function FeedScreen() {
         onClose={closeComments}
         postId={commentsModal.postId}
         token={token}
+        currentUser={currentUser}
       />
 
       {/* Full Screen Image Modal */}
@@ -748,6 +816,8 @@ const styles = StyleSheet.create({
     padding: 16,
     borderTopWidth: 1,
     borderTopColor: '#eee',
+    backgroundColor: '#fff',
+    minHeight: 60,
   },
   commentInput: {
     flex: 1,

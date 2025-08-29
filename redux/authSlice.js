@@ -35,15 +35,10 @@ const authSlice = createSlice({
     },
     restoreToken: (state, action) => {
       const { token, user } = action.payload;
-      console.log('Redux authSlice - restoreToken called with:');
-      console.log('  token:', token ? 'present (' + token.substring(0, 20) + '...)' : 'null');
-      console.log('  user:', user ? 'present' : 'null');
       
       state.token = token;
       state.user = user;
       state.isAuthenticated = !!token;
-      
-      console.log('  isAuthenticated set to:', state.isAuthenticated);
     },
 
 

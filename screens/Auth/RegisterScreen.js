@@ -12,6 +12,8 @@ import {
   Alert,
   ActivityIndicator,
   Modal,
+  Platform,
+  KeyboardAvoidingView,
 } from "react-native";
 import React, { useState } from "react";
 import { StatusBar } from "expo-status-bar";
@@ -38,11 +40,6 @@ export default function RegisterScreen() {
 
     // Debug: Log what we're sending
     const requestData = { username: username, email, password };
-    console.log("🚀 Sending registration request:", {
-      username: requestData.username,
-      email: requestData.email,
-      password: "***hidden***"
-    });
 
     try {
       const response = await fetch("http://192.168.43.36:8080/api/auth/register", {
@@ -51,11 +48,7 @@ export default function RegisterScreen() {
         body: JSON.stringify(requestData),
       });
 
-      console.log("📡 Response status:", response.status);
-      console.log("📡 Response headers:", response.headers);
-
       const text = await response.text(); // get raw text
-      console.log("📡 Raw response:", text);
       
       let data;
       try {
@@ -64,15 +57,10 @@ export default function RegisterScreen() {
         data = { message: text }; // fallback to plain text
       }
 
-      console.log("📡 Parsed response:", data);
-
       if (response.ok) {
-        console.log("Registration success:", data);
         setRegisteredEmail(email);
         setShowSuccessModal(true);
       } else {
-        console.log("Registration failed:", data);
-        
         // Handle specific error messages
         const errorMessage = data?.message || "Something went wrong.";
         
@@ -111,13 +99,15 @@ export default function RegisterScreen() {
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      <ScrollView>
-        <View style={{ backgroundColor: '#000', paddingTop: StatusBar.currentHeight }}>
+      <View style={{ backgroundColor: '#000', paddingTop: StatusBar.currentHeight }}>
        <StatusBar translucent barStyle="light-content" />
-        </View>
-
-        <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-          <ScrollView contentContainerStyle={{ flexGrow: 1 }}>
+      </View>
+      <KeyboardAvoidingView 
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        style={{ flex: 1 }}
+      >
+        <ScrollView contentContainerStyle={{ flexGrow: 1 }}>
+          <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
             <View style={styles.container}>
               <Image
                 style={styles.backgroundImage}
@@ -228,9 +218,9 @@ export default function RegisterScreen() {
                 </View>
               </View>
             </View>
-          </ScrollView>
-        </TouchableWithoutFeedback>
-      </ScrollView>
+          </TouchableWithoutFeedback>
+        </ScrollView>
+      </KeyboardAvoidingView>
 
       {/* Beautiful Success Modal */}
       <Modal

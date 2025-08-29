@@ -30,11 +30,6 @@ const CreatePostScreen = () => {
   const [pollQuestion, setPollQuestion] = useState('');
   const [pollOptions, setPollOptions] = useState(['', '']);
 
-
-  useEffect(() => {
-  if (pdf) console.log("PDF state updated:", pdf);
-}, [pdf]);
-
   const pickImage = async () => {
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
@@ -59,8 +54,6 @@ const CreatePostScreen = () => {
       multiple: false,
     });
 
-    console.log("PDF Picker Result:", result);
-
     if (!result.canceled && result.assets && result.assets.length > 0) {
       const asset = result.assets[0];
 
@@ -70,15 +63,12 @@ const CreatePostScreen = () => {
         type: asset.mimeType,
       };
 
-      console.log("PDF to upload:", pdfObj);
       setPdf(pdfObj);
     }
   } catch (error) {
     console.error("PDF selection failed:", error);
   }
 };
-
-
 
   const removeMedia = (type) => {
     if (type === 'image') setImage(null);
@@ -128,14 +118,12 @@ const CreatePostScreen = () => {
         });
 
       if (pdf) {
-  console.log("Appending PDF to formData:", pdf);
   formData.append('pdf', {
     uri: pdf.uri,
     name: pdf.name,
     type: pdf.type,
   });
 }
-
 
       if (showPoll) {
         formData.append("pollQuestion", pollQuestion);
@@ -174,7 +162,7 @@ const CreatePostScreen = () => {
         Alert.alert('Error', message);
       }
     } catch (err) {
-      console.log('Post error:', err);
+      console.error('Post error:', err);
       Alert.alert('Error', 'Something went wrong.');
     } finally {
       setLoading(false);

@@ -6,16 +6,13 @@ export const loadChats = createAsyncThunk(
   'chat/loadChats',
   async (_, { rejectWithValue, dispatch }) => {
     try {
-      console.log('Loading chats from Redux action...');
       const result = await ChatAPI.getUserChatsList();
-      console.log('Chats loaded successfully:', result);
       return result;
     } catch (error) {
       console.error('Failed to load chats in Redux action:', error);
       
       // If it's an authentication error, we might want to logout the user
       if (error.message.includes('Authentication failed') || error.message.includes('No valid authentication token')) {
-        console.log('Authentication error detected, user may need to login again');
         // You could dispatch a logout action here if needed
         // dispatch(logout());
       }
@@ -55,9 +52,9 @@ export const sendMessage = createAsyncThunk(
 
 export const createNewChat = createAsyncThunk(
   'chat/createChat',
-  async ({ participants, chatName = '', isGroup = false }, { rejectWithValue }) => {
+  async ({ participants, chatName = '' }, { rejectWithValue }) => {
     try {
-      return await ChatAPI.createChat(participants, chatName, isGroup);
+      return await ChatAPI.createChat(participants, chatName, 'PRIVATE');
     } catch (error) {
       return rejectWithValue(error.message);
     }
@@ -97,13 +94,20 @@ const chatSlice = createSlice({
       // Check if message already exists (avoid duplicates)
       const exists = state.messages[chatId].some(msg => msg.id === message.id);
       if (!exists) {
-        state.messages[chatId].unshift(message);
+        // Enhance message with proper sender identification if needed
+        const enhancedMessage = {
+          ...message,
+          // Keep original senderId if it exists, otherwise it's from another user
+          senderId: message.senderId || 'OTHER_USER_MESSAGE'
+        };
+        
+        state.messages[chatId].unshift(enhancedMessage);
         
         // Update chat's last message
         const chatIndex = state.chats.findIndex(chat => chat.id === chatId);
         if (chatIndex !== -1) {
-          state.chats[chatIndex].lastMessage = message;
-          state.chats[chatIndex].lastMessageAt = message.createdAt;
+          state.chats[chatIndex].lastMessage = enhancedMessage;
+          state.chats[chatIndex].lastMessageAt = enhancedMessage.createdAt;
           
           // Move chat to top of list
           const [updatedChat] = state.chats.splice(chatIndex, 1);
@@ -221,7 +225,14 @@ const chatSlice = createSlice({
         // Add message if not already exists (optimistic update)
         const exists = state.messages[chatId].some(msg => msg.id === message.id);
         if (!exists) {
-          state.messages[chatId].unshift(message);
+          // Ensure the message has senderId for proper identification
+          // This is a workaround for backend not setting senderId properly
+          const enhancedMessage = {
+            ...message,
+            // If senderId is missing, we know it's from the current user since they just sent it
+            senderId: message.senderId || 'CURRENT_USER_MESSAGE'
+          };
+          state.messages[chatId].unshift(enhancedMessage);
         }
       })
       .addCase(sendMessage.rejected, (state, action) => {

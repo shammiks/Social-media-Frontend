@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -10,14 +10,17 @@ import {
   RefreshControl,
   Alert,
   SafeAreaView,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { useDispatch, useSelector } from 'react-redux';
 import { Ionicons } from '@expo/vector-icons';
 import { loadChats } from '../../redux/ChatSlice';
-import { logout } from '../../redux/authSlice';
 import { formatDistanceToNow } from 'date-fns';
 import ChatAPI from '../../services/ChatApi';
 import WebSocketService from '../../services/WebSocketService';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useFocusEffect } from '@react-navigation/native';
 
 const ChatListScreen = ({ navigation }) => {
   const dispatch = useDispatch();
@@ -25,16 +28,40 @@ const ChatListScreen = ({ navigation }) => {
   const { user } = useSelector(state => state.auth);
   const [searchQuery, setSearchQuery] = useState('');
   const [filteredChats, setFilteredChats] = useState([]);
+  const [userCache, setUserCache] = useState(new Map());
 
   useEffect(() => {
     // Add a small delay before loading chats to ensure authentication is properly set up
     const timer = setTimeout(() => {
-      console.log('ChatListScreen: Loading chats...');
       dispatch(loadChats());
     }, 500);
 
     return () => clearTimeout(timer);
   }, [dispatch]);
+
+  // WebSocket setup for real-time updates
+  useEffect(() => {
+    if (user?.id) {
+      // Initialize WebSocket connection
+      WebSocketService.setDispatch(dispatch);
+      WebSocketService.connect();
+    }
+
+    // Don't disconnect on unmount since other screens might be using WebSocket
+    return () => {
+      // Just clean up dispatch reference if needed
+    };
+  }, [dispatch, user?.id]);
+
+  // Refresh chats when screen comes into focus (like when coming back from ChatScreen)
+  useFocusEffect(
+    useCallback(() => {
+      // Only refresh if not already loading to prevent duplicate requests
+      if (!isLoading) {
+        dispatch(loadChats());
+      }
+    }, [dispatch, isLoading])
+  );
 
   useEffect(() => {
     if (searchQuery) {
@@ -50,6 +77,38 @@ const ChatListScreen = ({ navigation }) => {
     }
   }, [chats, searchQuery]);
 
+  // Load user cache from storage
+  useEffect(() => {
+    const loadUserCache = async () => {
+      try {
+        const cached = await AsyncStorage.getItem('userCache');
+        if (cached) {
+          setUserCache(new Map(JSON.parse(cached)));
+        }
+      } catch (error) {
+        // Silent failure for cache loading
+      }
+    };
+    loadUserCache();
+  }, []);
+
+  // Save user to cache
+  const cacheUser = async (userId, userData) => {
+    try {
+      const newCache = new Map(userCache);
+      newCache.set(userId.toString(), userData);
+      setUserCache(newCache);
+      await AsyncStorage.setItem('userCache', JSON.stringify([...newCache]));
+    } catch (error) {
+      // Silent failure for cache saving
+    }
+  };
+
+  // Get user from cache
+  const getCachedUser = (userId) => {
+    return userCache.get(userId.toString());
+  };
+
   const handleChatPress = (chat) => {
     navigation.navigate('ChatScreen', { chat });
   };
@@ -61,18 +120,60 @@ const ChatListScreen = ({ navigation }) => {
     
     // For direct chats, show the other participant's name
     const otherParticipant = chat.participants?.find(p => p.user?.id !== user?.id);
-    return otherParticipant?.user?.displayName || 'Unknown User';
+    
+    if (otherParticipant?.user?.displayName) {
+      return otherParticipant.user.displayName;
+    }
+    
+    // Try username (but handle null usernames)
+    if (otherParticipant?.user?.username) {
+      return otherParticipant.user.username;
+    }
+    
+    // Try to get user info from cache if participant exists but no user details
+    if (otherParticipant?.userId || otherParticipant?.user?.id) {
+      const userId = otherParticipant.userId || otherParticipant.user.id;
+      const cachedUser = getCachedUser(userId);
+      if (cachedUser) {
+        return cachedUser.displayName || cachedUser.username;
+      }
+    }
+    
+    // Additional fallbacks for users with null usernames
+    if (otherParticipant?.user) {
+      const user = otherParticipant.user;
+      
+      // Try email prefix (before @)
+      if (user.email) {
+        const emailPrefix = user.email.split('@')[0];
+        return emailPrefix;
+      }
+      
+      // Last resort: User ID
+      if (user.id) {
+        return `User ${user.id}`;
+      }
+    }
+    
+    // If we have participant IDs but no user details, show a generic name
+    if (chat.participants && chat.participants.length > 0) {
+      const otherParticipantCount = chat.participants.filter(p => p.user?.id !== user?.id).length;
+      if (otherParticipantCount === 1) {
+        return 'Direct Chat';
+      }
+    }
+    
+    return 'Unknown User';
   };
 
   const getChatAvatar = (chat) => {
-    if (chat.isGroup) {
-      return require('../../assets/default-avatar.png'); // Add your group avatar
-    }
-    
     const otherParticipant = chat.participants?.find(p => p.user?.id !== user?.id);
-    return otherParticipant?.user?.profilePicture 
-      ? { uri: otherParticipant.user.profilePicture }
-      : require('../../assets/default-avatar.png'); // Add your default avatar
+    const displayName = getChatDisplayName(chat);
+    
+    // Always use ui-avatars.com to generate avatar with user initials
+    return { 
+      uri: `https://ui-avatars.com/api/?name=${encodeURIComponent(displayName)}&background=6C7CE7&color=fff&size=50` 
+    };
   };
 
   const renderChatItem = ({ item: chat }) => {
@@ -123,8 +224,6 @@ const ChatListScreen = ({ navigation }) => {
 
   useEffect(() => {
     if (error) {
-      console.log('ChatListScreen error:', error);
-      
       // Check if it's an authentication error
       if (error.includes('Authentication failed') || error.includes('No valid authentication token')) {
         // Disconnect WebSocket when authentication fails
@@ -138,14 +237,6 @@ const ChatListScreen = ({ navigation }) => {
             {
               text: 'Retry',
               onPress: () => dispatch(loadChats())
-            },
-            {
-              text: 'Logout',
-              style: 'destructive',
-              onPress: () => {
-                dispatch(logout());
-                navigation.replace('Login');
-              }
             }
           ]
         );
@@ -167,45 +258,17 @@ const ChatListScreen = ({ navigation }) => {
     navigation.navigate('CreateChatScreen');
   };
 
-  const handleDebugAuth = async () => {
-    console.log('Running authentication debug...');
-    await ChatAPI.debugAuthentication();
-  };
-
-  const handleManualLogout = () => {
-    Alert.alert(
-      'Logout',
-      'Are you sure you want to logout?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Logout',
-          style: 'destructive',
-          onPress: () => {
-            ChatAPI.clearAuthToken();
-            dispatch(logout());
-            navigation.replace('Login');
-          }
-        }
-      ]
-    );
-  };
-
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
+      <KeyboardAvoidingView 
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        style={{ flex: 1 }}
+      >
+        <View style={styles.header}>
         <Text style={styles.headerTitle}>Messages</Text>
-        <View style={{ flexDirection: 'row', gap: 10 }}>
-          <TouchableOpacity style={styles.debugButton} onPress={handleDebugAuth}>
-            <Ionicons name="bug-outline" size={20} color="#FF6B35" />
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.logoutButton} onPress={handleManualLogout}>
-            <Ionicons name="log-out-outline" size={20} color="#FF3B30" />
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.createButton} onPress={handleCreateChat}>
-            <Ionicons name="create-outline" size={24} color="#007AFF" />
-          </TouchableOpacity>
-        </View>
+        <TouchableOpacity style={styles.createButton} onPress={handleCreateChat}>
+          <Ionicons name="create-outline" size={24} color="#007AFF" />
+        </TouchableOpacity>
       </View>
       
       <View style={styles.searchContainer}>
@@ -228,6 +291,7 @@ const ChatListScreen = ({ navigation }) => {
         style={styles.chatList}
         showsVerticalScrollIndicator={false}
       />
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 };
@@ -331,16 +395,6 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 12,
     fontWeight: 'bold',
-  },
-  debugButton: {
-    padding: 8,
-    borderRadius: 20,
-    backgroundColor: '#FFF0F0',
-  },
-  logoutButton: {
-    padding: 8,
-    borderRadius: 20,
-    backgroundColor: '#FFF0F0',
   },
 })
 export default ChatListScreen;

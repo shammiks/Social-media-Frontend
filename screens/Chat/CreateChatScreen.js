@@ -6,9 +6,10 @@ import {
   TouchableOpacity,
   StyleSheet,
   TextInput,
-  Switch,
   Alert,
   SafeAreaView,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { useDispatch, useSelector } from 'react-redux';
 import { Ionicons } from '@expo/vector-icons';
@@ -19,8 +20,6 @@ const CreateChatScreen = ({ navigation }) => {
   const dispatch = useDispatch();
   const [users, setUsers] = useState([]);
   const [selectedUsers, setSelectedUsers] = useState([]);
-  const [isGroup, setIsGroup] = useState(false);
-  const [groupName, setGroupName] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
@@ -46,19 +45,20 @@ const CreateChatScreen = ({ navigation }) => {
       if (isSelected) {
         return prev.filter(u => u.id !== user.id);
       } else {
-        return [...prev, user];
+        // Only allow one user selection for direct chats
+        return [user];
       }
     });
   };
 
   const handleCreateChat = async () => {
     if (selectedUsers.length === 0) {
-      Alert.alert('Error', 'Please select at least one user');
+      Alert.alert('Error', 'Please select one user to start a chat');
       return;
     }
 
-    if (isGroup && !groupName.trim()) {
-      Alert.alert('Error', 'Please enter a group name');
+    if (selectedUsers.length > 1) {
+      Alert.alert('Error', 'You can only select one user for direct chats');
       return;
     }
 
@@ -69,11 +69,10 @@ const CreateChatScreen = ({ navigation }) => {
       // Use ChatAPI directly instead of Redux action for now
       const chatData = await ChatAPI.createChat(
         participantIds,
-        isGroup ? groupName : '', // Only set name for group chats
-        isGroup ? 'GROUP' : 'PRIVATE' // Backend expects 'GROUP' or 'PRIVATE'
+        '', // No name for direct chats
+        'PRIVATE' // Only private chats supported
       );
       
-      console.log('Created chat:', chatData);
       Alert.alert('Success', 'Chat created successfully!', [
         {
           text: 'OK',
@@ -112,7 +111,11 @@ const CreateChatScreen = ({ navigation }) => {
 
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
+      <KeyboardAvoidingView 
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        style={{ flex: 1 }}
+      >
+        <View style={styles.header}>
         <View style={styles.searchContainer}>
           <Ionicons name="search-outline" size={20} color="#666" style={styles.searchIcon} />
           <TextInput
@@ -122,25 +125,6 @@ const CreateChatScreen = ({ navigation }) => {
             onChangeText={setSearchQuery}
           />
         </View>
-        
-        <View style={styles.groupToggle}>
-          <Text style={styles.toggleLabel}>Group Chat</Text>
-          <Switch
-            value={isGroup}
-            onValueChange={setIsGroup}
-            trackColor={{ false: '#767577', true: '#007AFF' }}
-            thumbColor={isGroup ? '#fff' : '#f4f3f4'}
-          />
-        </View>
-        
-        {isGroup && (
-          <TextInput
-            style={styles.groupNameInput}
-            placeholder="Group name..."
-            value={groupName}
-            onChangeText={setGroupName}
-          />
-        )}
       </View>
       
       <FlatList
@@ -160,9 +144,10 @@ const CreateChatScreen = ({ navigation }) => {
         disabled={selectedUsers.length === 0 || isLoading}
       >
         <Text style={styles.createButtonText}>
-          {isLoading ? 'Creating...' : `Create Chat (${selectedUsers.length})`}
+          {isLoading ? 'Creating...' : selectedUsers.length > 0 ? 'Start Chat' : 'Select User'}
         </Text>
       </TouchableOpacity>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 };
@@ -172,30 +157,6 @@ const styles= StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#fff',
-  },
-    groupToggle: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginHorizontal: 16,
-    marginTop: 12,
-    paddingVertical: 8,
-  },
-  toggleLabel: {
-    fontSize: 16,
-    fontWeight: '500',
-    color: '#000',
-  },
-  groupNameInput: {
-    marginHorizontal: 16,
-    marginTop: 12,
-    height: 44,
-    borderWidth: 1,
-    borderColor: '#ccc',
-    borderRadius: 22,
-    paddingHorizontal: 16,
-    backgroundColor: '#fff',
-    fontSize: 16,
   },
   usersList: {
     flex: 1,

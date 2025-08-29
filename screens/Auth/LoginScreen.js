@@ -10,7 +10,8 @@ import {
   TouchableWithoutFeedback,
   Keyboard,
   Alert,
-  Platform
+  Platform,
+  KeyboardAvoidingView
 } from "react-native";
 import React, { useState } from "react";
 import { StatusBar } from "expo-status-bar";
@@ -44,14 +45,9 @@ const navigation = useNavigation();
 
     const data = await response.json(); // correct way to extract response body
 
-    console.log('Login response status:', response.status);
-    console.log('Login response data:', JSON.stringify(data, null, 2)); // ✅ show actual parsed data
-
     if (response.ok) {
       // Check for different possible token field names
       const token = data.token || data.accessToken || data.access_token || data.authToken;
-      console.log('Login successful, token from response:', token ? token.substring(0, 30) + '...' : 'No token found');
-      console.log('Available fields in response:', Object.keys(data));
       
       if (!token) {
         console.error('No token found in login response!');
@@ -75,18 +71,13 @@ const navigation = useNavigation();
           }
         });
         
-        if (profileResponse.ok) {
-          console.log('Token validation successful with profile endpoint');
-        } else {
-          console.log('Profile endpoint failed, trying chats endpoint...');
+        if (!profileResponse.ok) {
+          // Try chats endpoint as fallback
         }
         
         const testResult = await ChatAPI.getUserChatsList();
-        console.log('Token test successful, got chats:', testResult?.length || 0);
       } catch (tokenTestError) {
-        console.error('Token test failed:', tokenTestError);
-        console.log('Proceeding with login despite token test failure - maybe no chats exist yet');
-        // Don't block login for this - maybe the user just has no chats yet
+        // Token test failed, proceeding anyway
       }
       
       // Dispatch the login success action
@@ -98,7 +89,6 @@ const navigation = useNavigation();
       // Reset and connect WebSocket with a longer delay to ensure everything is ready
       WebSocketService.resetConnection();
       setTimeout(() => {
-        console.log('Attempting WebSocket connection after login...');
         WebSocketService.connect();
       }, 1000);
       
@@ -111,7 +101,7 @@ const navigation = useNavigation();
     }
 
   } catch (error) {
-    console.log("Login error:", error);
+    console.error("Login error:", error);
     Alert.alert("Error", "Something went wrong.");
   }
 };
@@ -122,10 +112,13 @@ const STATUSBAR_HEIGHT = Platform.OS === "android" ? StatusBar.currentHeight : 4
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={{ height: STATUSBAR_HEIGHT, backgroundColor: "#38bdf8" }} />
-      <ScrollView>
-        <StatusBar style="light" translucent backgroundColor="transparent" />
-        <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-          <ScrollView contentContainerStyle={{ flexGrow: 1 }}>
+      <KeyboardAvoidingView 
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        style={{ flex: 1 }}
+      >
+        <ScrollView contentContainerStyle={{ flexGrow: 1 }}>
+          <StatusBar style="light" translucent backgroundColor="transparent" />
+          <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
             <View style={styles.container}>
               <Image
                 style={styles.backgroundImage}
@@ -206,9 +199,9 @@ const STATUSBAR_HEIGHT = Platform.OS === "android" ? StatusBar.currentHeight : 4
                 </View>
               </View>
             </View>
-          </ScrollView>
-        </TouchableWithoutFeedback>
-      </ScrollView>
+          </TouchableWithoutFeedback>
+        </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }

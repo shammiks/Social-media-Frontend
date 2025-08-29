@@ -150,9 +150,9 @@ export const ChatProvider = ({ children }) => {
     }
   };
 
-  const createChat = async (participants, chatName = '', isGroup = false) => {
+  const createChat = async (participants, chatName = '') => {
     try {
-      const newChat = await ChatAPI.createChat(participants, chatName, isGroup);
+      const newChat = await ChatAPI.createChat(participants, chatName, 'PRIVATE');
       dispatch({ type: 'ADD_CHAT', payload: newChat });
       return newChat;
     } catch (error) {
