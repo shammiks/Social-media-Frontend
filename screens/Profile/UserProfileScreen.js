@@ -15,7 +15,8 @@ import {
   Platform,
   Share,
   Dimensions,
-  Linking
+  Linking,
+  ScrollView
 } from 'react-native';
 import { useSelector, useDispatch } from 'react-redux';
 import axios from 'axios';
@@ -57,6 +58,11 @@ function CommentsModal({ visible, onClose, postId, token, currentUserId, current
   const [newComment, setNewComment] = useState('');
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  
+  // Edit Comment States
+  const [editCommentModal, setEditCommentModal] = useState({ visible: false, comment: null });
+  const [editCommentContent, setEditCommentContent] = useState('');
+  const [editCommentLoading, setEditCommentLoading] = useState(false);
 
   const fetchComments = async () => {
     try {
@@ -110,6 +116,68 @@ function CommentsModal({ visible, onClose, postId, token, currentUserId, current
     }
   };
 
+  // Edit Comment Functions
+  const openEditCommentModal = (comment) => {
+    setEditCommentContent(comment.content || '');
+    setEditCommentModal({ visible: true, comment });
+  };
+
+  const closeEditCommentModal = () => {
+    setEditCommentModal({ visible: false, comment: null });
+    setEditCommentContent('');
+  };
+
+  const updateComment = async () => {
+    if (!editCommentContent.trim()) {
+      Alert.alert('Error', 'Comment content cannot be empty');
+      return;
+    }
+
+    try {
+      setEditCommentLoading(true);
+      const response = await axios.put(`${BASE_URL}/api/comments/${editCommentModal.comment.id}`, {
+        content: editCommentContent.trim()
+      }, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+
+      // Update the comment in the local state
+      setComments(prev => prev.map(comment => 
+        comment.id === editCommentModal.comment.id 
+          ? { ...comment, content: editCommentContent.trim(), edited: true }
+          : comment
+      ));
+
+      closeEditCommentModal();
+      Alert.alert('Success', 'Comment updated successfully');
+    } catch (error) {
+      console.error('Error updating comment:', error);
+      Alert.alert('Error', 'Failed to update comment');
+    } finally {
+      setEditCommentLoading(false);
+    }
+  };
+
+  const showCommentOptions = (comment) => {
+    Alert.alert(
+      'Comment Options',
+      'What would you like to do with this comment?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { 
+          text: 'Edit', 
+          onPress: () => openEditCommentModal(comment),
+          style: 'default'
+        },
+        { 
+          text: 'Delete', 
+          onPress: () => deleteComment(comment.id),
+          style: 'destructive'
+        }
+      ]
+    );
+  };
+
   useEffect(() => {
     if (visible) {
       fetchComments();
@@ -159,14 +227,19 @@ function CommentsModal({ visible, onClose, postId, token, currentUserId, current
             <Text style={styles.commentUsername}>{item.username}</Text>
           </TouchableOpacity>
           <Text style={styles.commentText}>{item.content}</Text>
-          <Text style={styles.commentTime}>{new Date(item.createdAt).toLocaleDateString()}</Text>
+          <View style={styles.commentTimeContainer}>
+            <Text style={styles.commentTime}>{new Date(item.createdAt).toLocaleDateString()}</Text>
+            {item.edited && <Text style={styles.editedText}>• edited</Text>}
+          </View>
         </View>
-        <TouchableOpacity 
-          onPress={() => deleteComment(item.id)}
-          style={styles.deleteCommentBtn}
-        >
-          <Ionicons name="trash-outline" size={16} color="#999" />
-        </TouchableOpacity>
+        {(item.userId || item.user?.id || item.authorId || item.commenterId) === currentUser?.id && (
+          <TouchableOpacity 
+            onPress={() => showCommentOptions(item)}
+            style={styles.commentOptionsBtn}
+          >
+            <MaterialIcons name="more-vert" size={16} color="#999" />
+          </TouchableOpacity>
+        )}
       </View>
     </View>
   );
@@ -226,6 +299,60 @@ function CommentsModal({ visible, onClose, postId, token, currentUserId, current
           </View>
         </KeyboardAvoidingView>
       </View>
+
+      {/* Edit Comment Modal */}
+      <Modal
+        animationType="slide"
+        transparent={true}
+        visible={editCommentModal.visible}
+        onRequestClose={closeEditCommentModal}
+      >
+        <View style={styles.editModalContainer}>
+          <View style={styles.editModalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Edit Comment</Text>
+              <TouchableOpacity 
+                onPress={closeEditCommentModal}
+                style={styles.closeModalBtn}
+              >
+                <MaterialIcons name="close" size={24} color="#333" />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={styles.modalBody}>
+              <TextInput
+                style={styles.editCommentInput}
+                multiline
+                numberOfLines={4}
+                value={editCommentContent}
+                onChangeText={setEditCommentContent}
+                placeholder="Write your comment..."
+                placeholderTextColor="#999"
+              />
+            </ScrollView>
+
+            <View style={styles.modalFooter}>
+              <TouchableOpacity 
+                onPress={closeEditCommentModal}
+                style={[styles.modalBtn, styles.cancelBtn]}
+              >
+                <Text style={styles.cancelBtnText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                onPress={updateComment}
+                style={[styles.modalBtn, styles.saveBtn]}
+                disabled={editCommentLoading}
+              >
+                {editCommentLoading ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Text style={styles.saveBtnText}>Save</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </Modal>
   );
 }
@@ -1511,6 +1638,95 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     padding: 40,
+  },
+
+  // Edit Comment Modal Styles
+  editModalContainer: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    padding: 20,
+  },
+  editModalContent: {
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    maxHeight: '80%',
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  closeModalBtn: {
+    padding: 8,
+    borderRadius: 20,
+    backgroundColor: '#f5f5f5',
+  },
+  modalBody: {
+    padding: 16,
+    maxHeight: 200,
+  },
+  modalFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    padding: 16,
+    borderTopWidth: 1,
+    borderTopColor: '#eee',
+    gap: 12,
+  },
+  modalBtn: {
+    flex: 1,
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 44,
+  },
+  cancelBtn: {
+    backgroundColor: '#f5f5f5',
+  },
+  saveBtn: {
+    backgroundColor: '#007bff',
+  },
+  cancelBtnText: {
+    color: '#666',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  saveBtnText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  editCommentInput: {
+    fontSize: 14,
+    color: '#333',
+    textAlignVertical: 'top',
+    minHeight: 80,
+    maxHeight: 120,
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+    borderRadius: 12,
+    padding: 12,
+    backgroundColor: '#f8f9fa',
+  },
+  commentTimeContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  editedText: {
+    fontSize: 11,
+    color: '#999',
+    fontStyle: 'italic',
+  },
+  commentOptionsBtn: {
+    padding: 4,
+    borderRadius: 12,
   },
 });
 

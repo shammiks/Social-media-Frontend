@@ -14,6 +14,7 @@ import {
   TextInput,
   KeyboardAvoidingView,
   Dimensions,
+  ScrollView,
 } from 'react-native';
 import axios from 'axios';
 import * as ImagePicker from 'expo-image-picker';
@@ -52,6 +53,9 @@ const dispatch = useDispatch();
   const [editPostModal, setEditPostModal] = useState({ visible: false, post: null });
   const [editContent, setEditContent] = useState('');
   const [editLoading, setEditLoading] = useState(false);
+  const [editCommentModal, setEditCommentModal] = useState({ visible: false, comment: null });
+  const [editCommentContent, setEditCommentContent] = useState('');
+  const [editCommentLoading, setEditCommentLoading] = useState(false);
   const pagerRef = useRef(null);
 
   const BASE_URL = 'http://192.168.43.36:8080';
@@ -442,6 +446,77 @@ const dispatch = useDispatch();
     );
   };
 
+  // Edit Comment Functions
+  const openEditCommentModal = (comment) => {
+    console.log('openEditCommentModal called with comment:', comment);
+    setEditCommentContent(comment.content || '');
+    setEditCommentModal({ visible: true, comment });
+    console.log('Modal should be visible now');
+  };
+
+  const closeEditCommentModal = () => {
+    setEditCommentModal({ visible: false, comment: null });
+    setEditCommentContent('');
+  };
+
+  const updateComment = async () => {
+    if (!editCommentContent.trim()) {
+      Alert.alert('Error', 'Comment content cannot be empty');
+      return;
+    }
+
+    try {
+      setEditCommentLoading(true);
+      const response = await axios.put(`${BASE_URL}/api/comments/${editCommentModal.comment.id}`, {
+        content: editCommentContent.trim()
+      }, {
+        headers: { 
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      // Update the comment in state
+      setComments(prev => prev.map(comment => 
+        comment.id === editCommentModal.comment.id 
+          ? { ...comment, content: editCommentContent.trim(), edited: true }
+          : comment
+      ));
+
+      closeEditCommentModal();
+      Alert.alert('Success', 'Comment updated successfully');
+    } catch (err) {
+      console.error('Update comment error:', err);
+      Alert.alert('Error', 'Failed to update comment');
+    } finally {
+      setEditCommentLoading(false);
+    }
+  };
+
+  const showCommentOptions = (comment) => {
+    console.log('showCommentOptions called with comment:', comment);
+    Alert.alert(
+      'Comment Options',
+      'What would you like to do with this comment?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { 
+          text: 'Edit', 
+          onPress: () => {
+            console.log('Edit button pressed');
+            openEditCommentModal(comment);
+          },
+          style: 'default'
+        },
+        { 
+          text: 'Delete', 
+          onPress: () => deleteComment(comment.id),
+          style: 'destructive'
+        }
+      ]
+    );
+  };
+
   const renderComment = ({ item }) => (
     <View style={styles.commentItem}>
       <View style={styles.commentHeader}>
@@ -481,14 +556,20 @@ const dispatch = useDispatch();
             <Text style={styles.commentUsername}>{item.username}</Text>
           </TouchableOpacity>
           <Text style={styles.commentText}>{item.content}</Text>
-          <Text style={styles.commentTime}>{new Date(item.createdAt).toLocaleDateString()}</Text>
+          <View style={styles.commentTimeContainer}>
+            <Text style={styles.commentTime}>{new Date(item.createdAt).toLocaleDateString()}</Text>
+            {item.edited && <Text style={styles.editedText}>• edited</Text>}
+          </View>
         </View>
         {(item.userId || item.user?.id || item.authorId || item.commenterId) === user.id && (
           <TouchableOpacity 
-            onPress={() => deleteComment(item.id)}
-            style={styles.deleteCommentBtn}
+            onPress={() => {
+              console.log('Comment options button pressed for comment:', item);
+              showCommentOptions(item);
+            }}
+            style={styles.commentOptionsBtn}
           >
-            <Ionicons name="trash-outline" size={16} color="#999" />
+            <MaterialIcons name="more-vert" size={16} color="#999" />
           </TouchableOpacity>
         )}
       </View>
@@ -998,6 +1079,60 @@ const dispatch = useDispatch();
           </View>
         </KeyboardAvoidingView>
       </Modal>
+
+      {/* Edit Comment Modal */}
+      <Modal
+        animationType="slide"
+        transparent={true}
+        visible={editCommentModal.visible}
+        onRequestClose={closeEditCommentModal}
+      >
+        <View style={styles.modalContainer}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Edit Comment</Text>
+              <TouchableOpacity 
+                onPress={closeEditCommentModal}
+                style={styles.closeModalBtn}
+              >
+                <MaterialIcons name="close" size={24} color="#333" />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={styles.modalBody}>
+              <TextInput
+                style={styles.editCommentInput}
+                multiline
+                numberOfLines={4}
+                value={editCommentContent}
+                onChangeText={setEditCommentContent}
+                placeholder="Write your comment..."
+                placeholderTextColor="#999"
+              />
+            </ScrollView>
+
+            <View style={styles.modalFooter}>
+              <TouchableOpacity 
+                onPress={closeEditCommentModal}
+                style={[styles.modalBtn, styles.cancelBtn]}
+              >
+                <Text style={styles.cancelBtnText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                onPress={updateComment}
+                style={[styles.modalBtn, styles.saveBtn]}
+                disabled={editCommentLoading}
+              >
+                {editCommentLoading ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Text style={styles.saveBtnText}>Save</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 };
@@ -1486,6 +1621,93 @@ const styles = StyleSheet.create({
     height: 60,
     borderRadius: 8,
     marginLeft: 8,
+  },
+
+  // Comment Options and Edit Styles
+  commentOptionsBtn: {
+    padding: 4,
+    borderRadius: 12,
+  },
+  editCommentInput: {
+    fontSize: 14,
+    color: '#333',
+    textAlignVertical: 'top',
+    minHeight: 80,
+    maxHeight: 120,
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+    borderRadius: 12,
+    padding: 12,
+    backgroundColor: '#f8f9fa',
+  },
+  commentTimeContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  editedText: {
+    fontSize: 11,
+    color: '#999',
+    fontStyle: 'italic',
+  },
+
+  // Modal Styles for Edit Comment
+  modalContent: {
+    flex: 1,
+    backgroundColor: '#fff',
+    margin: 20,
+    marginTop: 50,
+    borderRadius: 16,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  closeModalBtn: {
+    padding: 8,
+    borderRadius: 20,
+    backgroundColor: '#f5f5f5',
+  },
+  modalBody: {
+    flex: 1,
+    padding: 16,
+  },
+  modalFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    padding: 16,
+    borderTopWidth: 1,
+    borderTopColor: '#eee',
+    gap: 12,
+  },
+  modalBtn: {
+    flex: 1,
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 44,
+  },
+  cancelBtn: {
+    backgroundColor: '#f5f5f5',
+  },
+  saveBtn: {
+    backgroundColor: '#007bff',
+  },
+  cancelBtnText: {
+    color: '#666',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  saveBtnText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
   },
 });
 
