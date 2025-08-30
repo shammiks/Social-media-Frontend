@@ -13,12 +13,25 @@ import { useSelector } from 'react-redux';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import * as FileSystem from 'expo-file-system';
 import * as MediaLibrary from 'expo-media-library';
+import CommentComponent from '../../components/Comments/CommentComponent';
 
 const { width } = Dimensions.get('window');
 const BASE_URL = 'http://192.168.43.36:8080/api/posts';
 const SERVER_BASE_URL = 'http://192.168.43.36:8080';
 const COMMENTS_URL = 'http://192.168.43.36:8080/api/comments';
 const BOOKMARKS_URL = 'http://192.168.43.36:8080/api/bookmarks';
+
+// Helper function to safely format dates
+const formatDate = (dateString) => {
+  try {
+    if (!dateString) return 'Just now';
+    const date = new Date(dateString);
+    if (isNaN(date.getTime())) return 'Just now';
+    return date.toLocaleDateString();
+  } catch (error) {
+    return 'Just now';
+  }
+};
 
 function ReadMoreText({ text, numberOfLines = 3 }) {
   
@@ -45,11 +58,6 @@ function CommentsModal({ visible, onClose, postId, token, currentUser, navigatio
   const [newComment, setNewComment] = useState('');
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  
-  // Edit Comment States
-  const [editCommentModal, setEditCommentModal] = useState({ visible: false, comment: null });
-  const [editCommentContent, setEditCommentContent] = useState('');
-  const [editCommentLoading, setEditCommentLoading] = useState(false);
 
   const fetchComments = async () => {
     try {
@@ -80,7 +88,26 @@ function CommentsModal({ visible, onClose, postId, token, currentUser, navigatio
         }
       });
 
-      setComments(prev => [res.data, ...prev]);
+      // Enhance the comment with current user data for real-time display
+      const enhancedComment = {
+        ...res.data,
+        username: currentUser?.username || res.data.username,
+        userId: currentUser?.id || res.data.userId,
+        createdAt: res.data.createdAt || new Date().toISOString(),
+        likeCount: 0,
+        likedByCurrentUser: false,
+        replyCount: 0,
+        user: {
+          ...res.data.user,
+          id: currentUser?.id || res.data.user?.id,
+          username: currentUser?.username || res.data.user?.username,
+          profilePicture: currentUser?.profilePicture || currentUser?.avatar || res.data.user?.profilePicture,
+          avatar: currentUser?.avatar || currentUser?.profilePicture || res.data.user?.avatar
+        },
+        commenterId: currentUser?.id || res.data.commenterId
+      };
+
+      setComments(prev => [enhancedComment, ...prev]);
       setNewComment('');
     } catch (err) {
       console.error('Add comment error:', err.message);
@@ -92,7 +119,7 @@ function CommentsModal({ visible, onClose, postId, token, currentUser, navigatio
 
   const deleteComment = async (commentId) => {
     try {
-      await axios.delete(`${COMMENTS_URL}/comments/${commentId}`, {
+      await axios.delete(`${COMMENTS_URL}/${commentId}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       
@@ -103,66 +130,22 @@ function CommentsModal({ visible, onClose, postId, token, currentUser, navigatio
     }
   };
 
-  // Edit Comment Functions
-  const openEditCommentModal = (comment) => {
-    setEditCommentContent(comment.content || '');
-    setEditCommentModal({ visible: true, comment });
+  const updateComment = (updatedComment) => {
+    setComments(prev => prev.map(comment => 
+      comment.id === updatedComment.id ? updatedComment : comment
+    ));
   };
 
-  const closeEditCommentModal = () => {
-    setEditCommentModal({ visible: false, comment: null });
-    setEditCommentContent('');
-  };
-
-  const updateComment = async () => {
-    if (!editCommentContent.trim()) {
-      Alert.alert('Error', 'Comment content cannot be empty');
-      return;
-    }
-
-    try {
-      setEditCommentLoading(true);
-      const response = await axios.put(`${SERVER_BASE_URL}/api/comments/${editCommentModal.comment.id}`, {
-        content: editCommentContent.trim()
-      }, {
-        headers: { Authorization: `Bearer ${token}` }
+  const handleUserPress = (comment) => {
+    const commentUserId = comment.userId || comment.user?.id || comment.authorId || comment.commenterId;
+    if (commentUserId === currentUser?.id) {
+      navigation.navigate('Profile');
+    } else if (comment.username) {
+      navigation.navigate('ShowProfile', { 
+        username: comment.username,
+        userId: commentUserId
       });
-
-      // Update the comment in the local state
-      setComments(prev => prev.map(comment => 
-        comment.id === editCommentModal.comment.id 
-          ? { ...comment, content: editCommentContent.trim(), edited: true }
-          : comment
-      ));
-
-      closeEditCommentModal();
-      Alert.alert('Success', 'Comment updated successfully');
-    } catch (error) {
-      console.error('Error updating comment:', error);
-      Alert.alert('Error', 'Failed to update comment');
-    } finally {
-      setEditCommentLoading(false);
     }
-  };
-
-  const showCommentOptions = (comment) => {
-    Alert.alert(
-      'Comment Options',
-      'What would you like to do with this comment?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { 
-          text: 'Edit', 
-          onPress: () => openEditCommentModal(comment),
-          style: 'default'
-        },
-        { 
-          text: 'Delete', 
-          onPress: () => deleteComment(comment.id),
-          style: 'destructive'
-        }
-      ]
-    );
   };
 
   useEffect(() => {
@@ -170,63 +153,6 @@ function CommentsModal({ visible, onClose, postId, token, currentUser, navigatio
       fetchComments();
     }
   }, [visible, postId]);
-
-  const renderComment = ({ item }) => (
-    <View style={styles.commentItem}>
-      <View style={styles.commentHeader}>
-        <Image 
-          source={{ 
-            uri: (() => {
-              // For comments, get user ID from various possible fields
-              const commentUserId = item.userId || item.user?.id || item.authorId || item.commenterId;
-              
-              // Check if it's the current user first
-              if (commentUserId === currentUser?.id && (currentUser?.avatar || currentUser?.profilePicture)) {
-                return currentUser.avatar || currentUser.profilePicture;
-              }
-              // Otherwise check comment user data
-              return item.user?.profilePicture || item.profilePicture || item.user?.avatar
-                ? (item.user?.profilePicture || item.profilePicture || item.user?.avatar) 
-                : `https://ui-avatars.com/api/?name=${encodeURIComponent(item.username || 'User')}&background=6C7CE7&color=fff&size=32`;
-            })()
-          }} 
-          style={styles.commentAvatar} 
-        />
-        <View style={styles.commentContent}>
-          <TouchableOpacity onPress={() => {
-            // Check if this is the current user's comment
-            const commentUserId = item.userId || item.user?.id || item.authorId || item.commenterId;
-            if (commentUserId === currentUser?.id) {
-              // Navigate to current user's own profile (Profile tab)
-              navigation.navigate('Profile');
-            } else if (item.username) {
-              // Navigate to other user's profile
-              navigation.navigate('ShowProfile', { 
-                username: item.username,
-                userId: commentUserId
-              });
-            }
-          }}>
-            <Text style={styles.commentUsername}>{item.username}</Text>
-          </TouchableOpacity>
-          <Text style={styles.commentText}>{item.content}</Text>
-          <View style={styles.commentTimeContainer}>
-            <Text style={styles.commentTime}>{new Date(item.createdAt).toLocaleDateString()}</Text>
-            {item.edited && <Text style={styles.editedText}>• edited</Text>}
-          </View>
-        </View>
-        {/* Only show options button for current user's comments */}
-        {(item.userId || item.user?.id || item.authorId || item.commenterId) === currentUser?.id && (
-          <TouchableOpacity 
-            onPress={() => showCommentOptions(item)}
-            style={styles.commentOptionsBtn}
-          >
-            <MaterialIcons name="more-vert" size={16} color="#999" />
-          </TouchableOpacity>
-        )}
-      </View>
-    </View>
-  );
 
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
@@ -241,7 +167,17 @@ function CommentsModal({ visible, onClose, postId, token, currentUser, navigatio
         <FlatList
           data={comments}
           keyExtractor={(item) => item.id.toString()}
-          renderItem={renderComment}
+          renderItem={({ item }) => (
+            <CommentComponent
+              comment={item}
+              onCommentUpdate={updateComment}
+              onCommentDelete={deleteComment}
+              onUserPress={handleUserPress}
+              isOwner={item.userId === currentUser?.id || item.user?.id === currentUser?.id}
+              currentUser={currentUser}
+              formatDate={formatDate}
+            />
+          )}
           style={styles.commentsList}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
@@ -283,60 +219,6 @@ function CommentsModal({ visible, onClose, postId, token, currentUser, navigatio
           </View>
         </KeyboardAvoidingView>
       </View>
-
-      {/* Edit Comment Modal */}
-      <Modal
-        animationType="slide"
-        transparent={true}
-        visible={editCommentModal.visible}
-        onRequestClose={closeEditCommentModal}
-      >
-        <View style={styles.editModalContainer}>
-          <View style={styles.editModalContent}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Edit Comment</Text>
-              <TouchableOpacity 
-                onPress={closeEditCommentModal}
-                style={styles.closeModalBtn}
-              >
-                <MaterialIcons name="close" size={24} color="#333" />
-              </TouchableOpacity>
-            </View>
-
-            <ScrollView style={styles.modalBody}>
-              <TextInput
-                style={styles.editCommentInput}
-                multiline
-                numberOfLines={4}
-                value={editCommentContent}
-                onChangeText={setEditCommentContent}
-                placeholder="Write your comment..."
-                placeholderTextColor="#999"
-              />
-            </ScrollView>
-
-            <View style={styles.modalFooter}>
-              <TouchableOpacity 
-                onPress={closeEditCommentModal}
-                style={[styles.modalBtn, styles.cancelBtn]}
-              >
-                <Text style={styles.cancelBtnText}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity 
-                onPress={updateComment}
-                style={[styles.modalBtn, styles.saveBtn]}
-                disabled={editCommentLoading}
-              >
-                {editCommentLoading ? (
-                  <ActivityIndicator size="small" color="#fff" />
-                ) : (
-                  <Text style={styles.saveBtnText}>Save</Text>
-                )}
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
     </Modal>
   );
 }
@@ -365,7 +247,6 @@ export default function FeedScreen() {
       const now = Date.now();
       // Only refresh if it's been more than 2 seconds since last refresh and posts exist
       if (posts.length > 0 && (now - lastRefresh) > 2000) {
-        console.log('FeedScreen focused - refreshing posts');
         setLastRefresh(now);
         fetchPosts();
       }
@@ -389,17 +270,6 @@ export default function FeedScreen() {
         headers: { Authorization: `Bearer ${token}` } 
       })
     ]);
-
-    console.log('FeedScreen posts count:', postsRes.data.content?.length || postsRes.data.length || 0);
-    console.log('Total posts available:', postsRes.data.totalElements || 'N/A');
-    console.log('Current page:', postsRes.data.pageable?.pageNumber || 'N/A');
-    console.log('Total pages:', postsRes.data.totalPages || 'N/A');
-    console.log('First few posts dates:', (postsRes.data.content || postsRes.data).slice(0, 5).map(p => ({
-      id: p.id,
-      createdAt: p.createdAt,
-      content: p.content?.substring(0, 30) + '...',
-      username: p.username
-    })));
 
     // Create a Set of bookmarked post IDs for O(1) lookups
     const bookmarkedPostIds = new Set(
@@ -610,7 +480,7 @@ export default function FeedScreen() {
       />
       <View style={styles.userInfo}>
         <Text style={styles.username}>{item.username}</Text>
-        <Text style={styles.postTime}>{new Date(item.createdAt).toLocaleDateString()}</Text>
+        <Text style={styles.postTime}>{formatDate(item.createdAt)}</Text>
       </View>
       <TouchableOpacity 
         onPress={() => handleBookmark(item.id)}

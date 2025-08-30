@@ -11,7 +11,8 @@ import {
   Keyboard,
   Alert,
   Platform,
-  KeyboardAvoidingView
+  KeyboardAvoidingView,
+  ActivityIndicator
 } from "react-native";
 import React, { useState } from "react";
 import { StatusBar } from "expo-status-bar";
@@ -29,12 +30,45 @@ const dispatch = useDispatch();
 const navigation = useNavigation();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
+  
+  // Email validation states
+  const [emailError, setEmailError] = useState("");
+  const [emailTouched, setEmailTouched] = useState(false);
+
+  // Email validation function
+  const validateEmail = (email) => {
+    const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+    return emailRegex.test(email);
+  };
+
+  // Handle email input changes
+  const handleEmailChange = (text) => {
+    setEmail(text);
+    setEmailTouched(true);
+    
+    if (text === '') {
+      setEmailError('Email is required');
+    } else if (!validateEmail(text)) {
+      setEmailError('Please enter a valid email address');
+    } else {
+      setEmailError('');
+    }
+  };
 
   const handleLogin = async () => {
   if (!email || !password) {
     Alert.alert("Error", "Please enter both email and password.");
     return;
   }
+
+  // Validate email format
+  if (!validateEmail(email)) {
+    Alert.alert("Invalid Email", "Please enter a valid email address");
+    return;
+  }
+
+  setIsLoading(true);
 
   try {
     const response = await fetch("http://192.168.43.36:8080/api/auth/login", {
@@ -94,13 +128,16 @@ const navigation = useNavigation();
       
       // Add a small delay before navigation to ensure everything is set up
       setTimeout(() => {
+        setIsLoading(false);
         navigation.reset({ index: 0, routes: [{ name: "Authenticated" }] });
       }, 1500);
     } else {
+      setIsLoading(false);
       Alert.alert("Login Failed", data.message || "Invalid credentials");
     }
 
   } catch (error) {
+    setIsLoading(false);
     console.error("Login error:", error);
     Alert.alert("Error", "Something went wrong.");
   }
@@ -153,17 +190,28 @@ const STATUSBAR_HEIGHT = Platform.OS === "android" ? StatusBar.currentHeight : 4
                 <View style={styles.formContainer}>
                   <Animated.View
                     entering={FadeInDown.duration(1000).springify()}
-                    style={styles.inputBox}
+                    style={[styles.inputBox, emailError && emailTouched ? styles.inputError : null]}
                   >
                     <TextInput
                       placeholder="Email"
                       placeholderTextColor={"gray"}
                       value={email}
-                      onChangeText={setEmail}
+                      onChangeText={handleEmailChange}
                       keyboardType="email-address"
                       autoCapitalize="none"
+                      autoCorrect={false}
                     />
                   </Animated.View>
+                  
+                  {/* Email validation error message */}
+                  {emailError && emailTouched && (
+                    <Animated.View
+                      entering={FadeInDown.duration(300).springify()}
+                      style={styles.errorContainer}
+                    >
+                      <Text style={styles.errorText}>{emailError}</Text>
+                    </Animated.View>
+                  )}
 
                   <Animated.View
                     entering={FadeInDown.duration(1000).delay(200).springify()}
@@ -182,8 +230,24 @@ const STATUSBAR_HEIGHT = Platform.OS === "android" ? StatusBar.currentHeight : 4
                     entering={FadeInDown.duration(1000).delay(400).springify()}
                     style={{ width: "100%" }}
                   >
-                    <TouchableOpacity onPress={handleLogin} style={styles.loginButton}>
-                      <Text style={styles.loginButtonText}>Login</Text>
+                    <TouchableOpacity 
+                      onPress={handleLogin} 
+                      style={[
+                        styles.loginButton,
+                        isLoading && styles.loginButtonDisabled
+                      ]}
+                      disabled={isLoading}
+                    >
+                      {isLoading ? (
+                        <View style={styles.loadingContainer}>
+                          <ActivityIndicator color="#fff" size="small" />
+                          <Text style={[styles.loginButtonText, { marginLeft: 10 }]}>
+                            Signing In...
+                          </Text>
+                        </View>
+                      ) : (
+                        <Text style={styles.loginButtonText}>Login</Text>
+                      )}
                     </TouchableOpacity>
                   </Animated.View>
 
@@ -279,5 +343,31 @@ const styles = StyleSheet.create({
   },
   signupText: {
     color: "#0284c7",
+  },
+  
+  // Email validation styles
+  inputError: {
+    borderColor: "#ff4444",
+    borderWidth: 1,
+  },
+  errorContainer: {
+    marginBottom: 10,
+    marginHorizontal: 0,
+  },
+  errorText: {
+    color: "#ff4444",
+    fontSize: 12,
+    textAlign: "left",
+    marginLeft: 5,
+  },
+  
+  // Loading styles
+  loginButtonDisabled: {
+    opacity: 0.7,
+  },
+  loadingContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
   },
 });

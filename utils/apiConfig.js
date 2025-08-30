@@ -15,6 +15,9 @@ export const API_ENDPOINTS = {
   AUTH: `${API_BASE_URL}/auth`
 };
 
+// Export individual URLs for backward compatibility
+export const COMMENTS_URL = API_ENDPOINTS.COMMENTS;
+
 // Helper function to get user profile endpoint
 export const getUserProfileEndpoint = (userId, username) => {
   if (userId) {

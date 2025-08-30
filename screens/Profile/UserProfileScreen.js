@@ -27,8 +27,21 @@ import { API_ENDPOINTS, getUserProfileEndpoint, createAuthHeaders } from '../../
 import ChatAPI from '../../services/ChatApi';
 import { loadChats } from '../../redux/ChatSlice';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import CommentComponent from '../../components/Comments/CommentComponent';
 
 const { width } = Dimensions.get('window');
+
+// Helper function to safely format dates
+const formatDate = (dateString) => {
+  try {
+    if (!dateString) return 'Just now';
+    const date = new Date(dateString);
+    if (isNaN(date.getTime())) return 'Just now';
+    return date.toLocaleDateString();
+  } catch (error) {
+    return 'Just now';
+  }
+};
 
 // ReadMoreText Component
 function ReadMoreText({ text, numberOfLines = 3 }) {
@@ -58,11 +71,6 @@ function CommentsModal({ visible, onClose, postId, token, currentUserId, current
   const [newComment, setNewComment] = useState('');
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  
-  // Edit Comment States
-  const [editCommentModal, setEditCommentModal] = useState({ visible: false, comment: null });
-  const [editCommentContent, setEditCommentContent] = useState('');
-  const [editCommentLoading, setEditCommentLoading] = useState(false);
 
   const fetchComments = async () => {
     try {
@@ -93,7 +101,26 @@ function CommentsModal({ visible, onClose, postId, token, currentUserId, current
         }
       });
 
-      setComments(prev => [res.data, ...prev]);
+      // Enhance the comment with current user data for real-time display
+      const enhancedComment = {
+        ...res.data,
+        username: currentUser?.username || res.data.username,
+        userId: currentUser?.id || res.data.userId,
+        createdAt: res.data.createdAt || new Date().toISOString(),
+        likeCount: 0,
+        likedByCurrentUser: false,
+        replyCount: 0,
+        user: {
+          ...res.data.user,
+          id: currentUser?.id || res.data.user?.id,
+          username: currentUser?.username || res.data.user?.username,
+          profilePicture: currentUser?.profilePicture || currentUser?.avatar || res.data.user?.profilePicture,
+          avatar: currentUser?.avatar || currentUser?.profilePicture || res.data.user?.avatar
+        },
+        commenterId: currentUser?.id || res.data.commenterId
+      };
+
+      setComments(prev => [enhancedComment, ...prev]);
       setNewComment('');
     } catch (err) {
       console.error('Add comment error:', err.message);
@@ -103,79 +130,26 @@ function CommentsModal({ visible, onClose, postId, token, currentUserId, current
     }
   };
 
-  const deleteComment = async (commentId) => {
-    try {
-      await axios.delete(`${COMMENTS_URL}/comments/${commentId}`, {
-        headers: { Authorization: `Bearer ${token}` }
+  const updateComment = (updatedComment) => {
+    setComments(prev => prev.map(comment => 
+      comment.id === updatedComment.id ? updatedComment : comment
+    ));
+  };
+
+  const deleteComment = (commentId) => {
+    setComments(prev => prev.filter(comment => comment.id !== commentId));
+  };
+
+  const handleUserPress = (comment) => {
+    const commentUserId = comment.userId || comment.user?.id || comment.authorId || comment.commenterId;
+    if (commentUserId === currentUser?.id) {
+      navigation.navigate('Profile');
+    } else if (comment.username) {
+      navigation.navigate('ShowProfile', { 
+        username: comment.username,
+        userId: commentUserId
       });
-      
-      setComments(prev => prev.filter(comment => comment.id !== commentId));
-    } catch (err) {
-      console.error('Delete comment error:', err.message);
-      Alert.alert('Error', 'Failed to delete comment');
     }
-  };
-
-  // Edit Comment Functions
-  const openEditCommentModal = (comment) => {
-    setEditCommentContent(comment.content || '');
-    setEditCommentModal({ visible: true, comment });
-  };
-
-  const closeEditCommentModal = () => {
-    setEditCommentModal({ visible: false, comment: null });
-    setEditCommentContent('');
-  };
-
-  const updateComment = async () => {
-    if (!editCommentContent.trim()) {
-      Alert.alert('Error', 'Comment content cannot be empty');
-      return;
-    }
-
-    try {
-      setEditCommentLoading(true);
-      const response = await axios.put(`${BASE_URL}/api/comments/${editCommentModal.comment.id}`, {
-        content: editCommentContent.trim()
-      }, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-
-      // Update the comment in the local state
-      setComments(prev => prev.map(comment => 
-        comment.id === editCommentModal.comment.id 
-          ? { ...comment, content: editCommentContent.trim(), edited: true }
-          : comment
-      ));
-
-      closeEditCommentModal();
-      Alert.alert('Success', 'Comment updated successfully');
-    } catch (error) {
-      console.error('Error updating comment:', error);
-      Alert.alert('Error', 'Failed to update comment');
-    } finally {
-      setEditCommentLoading(false);
-    }
-  };
-
-  const showCommentOptions = (comment) => {
-    Alert.alert(
-      'Comment Options',
-      'What would you like to do with this comment?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { 
-          text: 'Edit', 
-          onPress: () => openEditCommentModal(comment),
-          style: 'default'
-        },
-        { 
-          text: 'Delete', 
-          onPress: () => deleteComment(comment.id),
-          style: 'destructive'
-        }
-      ]
-    );
   };
 
   useEffect(() => {
@@ -183,66 +157,6 @@ function CommentsModal({ visible, onClose, postId, token, currentUserId, current
       fetchComments();
     }
   }, [visible, postId]);
-
-  const renderComment = ({ item }) => (
-    <View style={styles.commentItem}>
-      <View style={styles.commentHeader}>
-        <Image 
-          source={{ 
-            uri: (() => {
-              // For comments, get user ID from various possible fields
-              const commentUserId = item.userId || item.user?.id || item.authorId || item.commenterId;
-              
-              // Check if it's the current user first
-              if (commentUserId === currentUserId && (currentUser?.avatar || currentUser?.profilePicture)) {
-                return currentUser.avatar || currentUser.profilePicture;
-              }
-              // If comment is from the profile owner, use profile data
-              if (commentUserId === (userId || profile?.id) && (profile?.imageUrl || profile?.avatar || profile?.profilePicture)) {
-                return profile.imageUrl || profile.avatar || profile.profilePicture;
-              }
-              // Otherwise check comment user data
-              return item.user?.avatar || item.user?.profilePicture || item.avatar || item.profilePicture
-                ? (item.user?.avatar || item.user?.profilePicture || item.avatar || item.profilePicture)
-                : `https://ui-avatars.com/api/?name=${encodeURIComponent(item.username || 'User')}&background=6C7CE7&color=fff&size=32`;
-            })()
-          }} 
-          style={styles.commentAvatar} 
-        />
-        <View style={styles.commentContent}>
-          <TouchableOpacity onPress={() => {
-            // Check if this is the current user's comment
-            const commentUserId = item.userId || item.user?.id || item.authorId || item.commenterId;
-            if (commentUserId === currentUser?.id) {
-              // Navigate to current user's own profile (Profile tab)
-              navigation.navigate('Profile');
-            } else if (item.username) {
-              // Navigate to other user's profile
-              navigation.navigate('ShowProfile', { 
-                username: item.username,
-                userId: commentUserId
-              });
-            }
-          }}>
-            <Text style={styles.commentUsername}>{item.username}</Text>
-          </TouchableOpacity>
-          <Text style={styles.commentText}>{item.content}</Text>
-          <View style={styles.commentTimeContainer}>
-            <Text style={styles.commentTime}>{new Date(item.createdAt).toLocaleDateString()}</Text>
-            {item.edited && <Text style={styles.editedText}>• edited</Text>}
-          </View>
-        </View>
-        {(item.userId || item.user?.id || item.authorId || item.commenterId) === currentUser?.id && (
-          <TouchableOpacity 
-            onPress={() => showCommentOptions(item)}
-            style={styles.commentOptionsBtn}
-          >
-            <MaterialIcons name="more-vert" size={16} color="#999" />
-          </TouchableOpacity>
-        )}
-      </View>
-    </View>
-  );
 
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
@@ -257,7 +171,17 @@ function CommentsModal({ visible, onClose, postId, token, currentUserId, current
         <FlatList
           data={comments}
           keyExtractor={(item) => item.id.toString()}
-          renderItem={renderComment}
+          renderItem={({ item }) => (
+            <CommentComponent
+              comment={item}
+              onCommentUpdate={updateComment}
+              onCommentDelete={deleteComment}
+              onUserPress={handleUserPress}
+              isOwner={item.userId === currentUser?.id || item.user?.id === currentUser?.id}
+              currentUser={currentUser}
+              formatDate={formatDate}
+            />
+          )}
           style={styles.commentsList}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
@@ -299,60 +223,6 @@ function CommentsModal({ visible, onClose, postId, token, currentUserId, current
           </View>
         </KeyboardAvoidingView>
       </View>
-
-      {/* Edit Comment Modal */}
-      <Modal
-        animationType="slide"
-        transparent={true}
-        visible={editCommentModal.visible}
-        onRequestClose={closeEditCommentModal}
-      >
-        <View style={styles.editModalContainer}>
-          <View style={styles.editModalContent}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Edit Comment</Text>
-              <TouchableOpacity 
-                onPress={closeEditCommentModal}
-                style={styles.closeModalBtn}
-              >
-                <MaterialIcons name="close" size={24} color="#333" />
-              </TouchableOpacity>
-            </View>
-
-            <ScrollView style={styles.modalBody}>
-              <TextInput
-                style={styles.editCommentInput}
-                multiline
-                numberOfLines={4}
-                value={editCommentContent}
-                onChangeText={setEditCommentContent}
-                placeholder="Write your comment..."
-                placeholderTextColor="#999"
-              />
-            </ScrollView>
-
-            <View style={styles.modalFooter}>
-              <TouchableOpacity 
-                onPress={closeEditCommentModal}
-                style={[styles.modalBtn, styles.cancelBtn]}
-              >
-                <Text style={styles.cancelBtnText}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity 
-                onPress={updateComment}
-                style={[styles.modalBtn, styles.saveBtn]}
-                disabled={editCommentLoading}
-              >
-                {editCommentLoading ? (
-                  <ActivityIndicator size="small" color="#fff" />
-                ) : (
-                  <Text style={styles.saveBtnText}>Save</Text>
-                )}
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
     </Modal>
   );
 }
@@ -360,9 +230,8 @@ function CommentsModal({ visible, onClose, postId, token, currentUserId, current
 const UserProfileScreen = ({ route, navigation }) => {
   const { userId, username } = route.params;
   const dispatch = useDispatch();
-  const token = useSelector((state) => state.auth.token);
+  const { token, user: currentUser } = useSelector((state) => state.auth);
   const currentUserId = useSelector((state) => state.auth.userId || state.auth.user?.id || state.user?.id);
-  const currentUser = useSelector((state) => state.auth.user);
   const authState = useSelector((state) => state.auth);
   
   // Add token validation
@@ -1066,7 +935,7 @@ const renderFollowButton = () => {
         />
         <View style={styles.userInfo}>
           <Text style={styles.username}>{item.username}</Text>
-          <Text style={styles.postTime}>{new Date(item.createdAt).toLocaleDateString()}</Text>
+          <Text style={styles.postTime}>{formatDate(item.createdAt)}</Text>
         </View>
         <TouchableOpacity 
           onPress={() => handleBookmark(item.id)}
@@ -1199,24 +1068,47 @@ const renderFollowButton = () => {
         keyExtractor={(item) => item.id.toString()}
        ListHeaderComponent={
   <>
-    <View style={styles.profileInfo}>
-      <Image 
-        source={{ 
-          uri: profile?.imageUrl || profile?.avatar || profile?.profilePicture
-            ? (profile.imageUrl || profile.avatar || profile.profilePicture)
-            : `https://ui-avatars.com/api/?name=${encodeURIComponent(profile?.username || 'User')}&background=6C7CE7&color=fff&size=80`
-        }} 
-        style={styles.profileAvatar} 
-      />
-      <View style={styles.stats}>
-        <View style={styles.statItem}>
-          <Text style={styles.statCount}>{followersCount}</Text>
-          <Text style={styles.statLabel}>Followers</Text>
+    {/* Professional Profile Header */}
+    <View style={styles.profileHeader}>
+      {/* Top Row: Avatar and Stats */}
+      <View style={styles.profileTopRow}>
+        <View style={styles.avatarSection}>
+          <Image 
+            source={{ 
+              uri: profile?.imageUrl || profile?.avatar || profile?.profilePicture
+                ? (profile.imageUrl || profile.avatar || profile.profilePicture)
+                : `https://ui-avatars.com/api/?name=${encodeURIComponent(profile?.username || 'User')}&background=6C7CE7&color=fff&size=65`
+            }} 
+            style={styles.profileAvatar} 
+          />
         </View>
-        <View style={styles.statItem}>
-          <Text style={styles.statCount}>{posts.length}</Text>
-          <Text style={styles.statLabel}>Posts</Text>
+        
+        <View style={styles.statsSection}>
+          <View style={styles.statsRow}>
+            <View style={styles.statBox}>
+              <Text style={styles.statNumber}>{posts.length}</Text>
+              <Text style={styles.statText}>Posts</Text>
+            </View>
+            <View style={styles.statBox}>
+              <Text style={styles.statNumber}>{followersCount}</Text>
+              <Text style={styles.statText}>Followers</Text>
+            </View>
+            <View style={styles.statBox}>
+              <Text style={styles.statNumber}>0</Text>
+              <Text style={styles.statText}>Following</Text>
+            </View>
+          </View>
         </View>
+      </View>
+
+      {/* Username and Bio Section */}
+      <View style={styles.profileInfoSection}>
+        <Text style={styles.displayName}>{profile?.username}</Text>
+        {profile?.bio && (
+          <Text style={styles.bioText}>
+            {profile.bio}
+          </Text>
+        )}
       </View>
     </View>
 
@@ -1367,20 +1259,113 @@ const styles = StyleSheet.create({
     shadowRadius: 6,
     elevation: 3,
   },
-  profileAvatar: { 
-    width: 80, 
-    height: 80, 
-    borderRadius: 40,
-    backgroundColor: '#f0f0f0'
+  
+  // New Professional Profile Header Styles
+  profileHeader: {
+    backgroundColor: '#fff',
+    paddingHorizontal: 20,
+    paddingTop: 20,
+    paddingBottom: 16,
+    marginBottom: 8,
   },
-  stats: { 
+  
+  profileTopRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginBottom: 16,
+  },
+  
+  avatarSection: {
+    marginRight: 20,
+  },
+  
+  profileAvatar: { 
+    width: 65, 
+    height: 65, 
+    borderRadius: 32.5,
+    backgroundColor: '#f0f0f0',
+    borderWidth: 3,
+    borderColor: '#fff',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  
+  statsSection: {
     flex: 1,
+    justifyContent: 'center',
+  },
+  
+  statsRow: {
     flexDirection: 'row',
     justifyContent: 'space-around',
-    marginLeft: 20
+    alignItems: 'center',
+  },
+  
+  statBox: {
+    alignItems: 'center',
+    flex: 1,
+  },
+  
+  statNumber: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#333',
+    marginBottom: 2,
+  },
+  
+  statText: {
+    fontSize: 13,
+    color: '#666',
+    fontWeight: '500',
+  },
+  
+  profileInfoSection: {
+    marginTop: 4,
+  },
+  
+  displayName: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 8,
+  },
+  
+  bioText: {
+    fontSize: 14,
+    color: '#333',
+    lineHeight: 20,
+    marginBottom: 4,
+  },
+  userDetails: {
+    flex: 1,
+    marginLeft: 16,
+    marginRight: 16,
+  },
+  profileUsername: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 8,
+  },
+  profileBio: {
+    fontSize: 14,
+    color: '#333',
+    lineHeight: 20,
+    backgroundColor: '#f8f9fa',
+    padding: 8,
+    borderRadius: 8,
+  },
+  stats: { 
+    flexDirection: 'column',
+    alignItems: 'center',
+    minWidth: 80,
   },
   statItem: {
-    alignItems: 'center'
+    alignItems: 'center',
+    marginBottom: 12,
   },
   statCount: { 
     fontSize: 18, 
@@ -1394,25 +1379,32 @@ const styles = StyleSheet.create({
   },
   actionButtonsRow: {
     flexDirection: 'row',
-    paddingHorizontal: 16,
-    marginBottom: 16,
-    gap: 10,
+    paddingHorizontal: 20,
+    paddingBottom: 16,
+    backgroundColor: '#fff',
+    gap: 12,
   },
   followButton: {
     flex: 1,
-    backgroundColor: '#1e90ff',
-    padding: 12,
-    borderRadius: 8,
+    backgroundColor: '#007AFF',
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    borderRadius: 6,
     alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
   },
   messageButton: {
     flex: 1,
     backgroundColor: '#fff',
-    padding: 12,
-    borderRadius: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    borderRadius: 6,
     borderWidth: 1,
     borderColor: '#007AFF',
     alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
     flexDirection: 'row',
     justifyContent: 'center',
   },
@@ -1440,11 +1432,14 @@ const styles = StyleSheet.create({
     fontSize: 16
   },
   postsTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    marginHorizontal: 16,
+    fontSize: 16,
+    fontWeight: '600',
+    marginHorizontal: 20,
+    marginTop: 8,
     marginBottom: 16,
-    color: '#333'
+    color: '#333',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
   // Post styles from FeedScreen
   card: {

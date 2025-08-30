@@ -30,8 +30,22 @@ import Animated, { FadeInUp } from 'react-native-reanimated';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { Ionicons, Feather, MaterialIcons } from '@expo/vector-icons';
 import PagerView from 'react-native-pager-view';
+import CommentComponent from '../../components/Comments/CommentComponent';
+import { API_ENDPOINTS } from '../../utils/apiConfig';
 
 const { width } = Dimensions.get('window');
+
+// Helper function to safely format dates
+const formatDate = (dateString) => {
+  try {
+    if (!dateString) return 'Just now';
+    const date = new Date(dateString);
+    if (isNaN(date.getTime())) return 'Just now';
+    return date.toLocaleDateString();
+  } catch (error) {
+    return 'Just now';
+  }
+};
 
 const ProfileScreen = () => {
 const dispatch = useDispatch();
@@ -56,9 +70,12 @@ const dispatch = useDispatch();
   const [editCommentModal, setEditCommentModal] = useState({ visible: false, comment: null });
   const [editCommentContent, setEditCommentContent] = useState('');
   const [editCommentLoading, setEditCommentLoading] = useState(false);
+  const [bioModal, setBioModal] = useState({ visible: false });
+  const [bioContent, setBioContent] = useState('');
+  const [bioLoading, setBioLoading] = useState(false);
   const pagerRef = useRef(null);
 
-  const BASE_URL = 'http://192.168.43.36:8080';
+  const BASE_URL = API_ENDPOINTS.BASE.replace('/api', ''); // Remove /api suffix for direct endpoint calls
 
   const fetchData = async () => {
     try {
@@ -158,6 +175,44 @@ const dispatch = useDispatch();
     } finally {
       setUploadingAvatar(false);
     }
+  };
+
+  const handleBioUpdate = async () => {
+    if (bioLoading) return;
+    
+    try {
+      setBioLoading(true);
+      const response = await axios.put(
+        `${BASE_URL}/api/auth/me/bio`,
+        { bio: bioContent },
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+        }
+      );
+
+      // Update user in Redux store
+      dispatch(loginSuccess({ token, user: response.data }));
+      setBioModal({ visible: false });
+      Alert.alert('Success', 'Bio updated successfully');
+    } catch (err) {
+      console.error('Bio update failed:', err.response?.data || err.message);
+      Alert.alert('Error', 'Failed to update bio: ' + (err.response?.data?.message || err.message));
+    } finally {
+      setBioLoading(false);
+    }
+  };
+
+  const openBioModal = () => {
+    setBioContent(user?.bio || '');
+    setBioModal({ visible: true });
+  };
+
+  const closeBioModal = () => {
+    setBioModal({ visible: false });
+    setBioContent('');
   };
 
   const handleLogout = () => {
@@ -321,7 +376,23 @@ const dispatch = useDispatch();
         }
       });
 
-      setComments(prev => [res.data, ...prev]);
+      // Enhance the comment with current user data for real-time display
+      const enhancedComment = {
+        ...res.data,
+        username: user?.username || res.data.username,
+        userId: user?.id || res.data.userId,
+        createdAt: res.data.createdAt || new Date().toISOString(),
+        user: {
+          ...res.data.user,
+          id: user?.id || res.data.user?.id,
+          username: user?.username || res.data.user?.username,
+          profilePicture: user?.profilePicture || user?.avatar || res.data.user?.profilePicture,
+          avatar: user?.avatar || user?.profilePicture || res.data.user?.avatar
+        },
+        commenterId: user?.id || res.data.commenterId
+      };
+
+      setComments(prev => [enhancedComment, ...prev]);
       setNewComment('');
     } catch (err) {
       console.error('Add comment error:', err.message);
@@ -557,11 +628,17 @@ const dispatch = useDispatch();
           </TouchableOpacity>
           <Text style={styles.commentText}>{item.content}</Text>
           <View style={styles.commentTimeContainer}>
-            <Text style={styles.commentTime}>{new Date(item.createdAt).toLocaleDateString()}</Text>
+            <Text style={styles.commentTime}>{formatDate(item.createdAt)}</Text>
             {item.edited && <Text style={styles.editedText}>• edited</Text>}
           </View>
         </View>
-        {(item.userId || item.user?.id || item.authorId || item.commenterId) === user.id && (
+        {(() => {
+          const commentUserId = item.userId || item.user?.id || item.authorId || item.commenterId;
+          const currentUserId = user?.id;
+          const isOwner = commentUserId === currentUserId;
+          console.log('Comment ownership check:', { commentUserId, currentUserId, isOwner, item });
+          return isOwner;
+        })() && (
           <TouchableOpacity 
             onPress={() => {
               console.log('Comment options button pressed for comment:', item);
@@ -648,7 +725,7 @@ const dispatch = useDispatch();
           />
           <View style={styles.userInfo}>
             <Text style={styles.postUsername}>{item.username}</Text>
-            <Text style={styles.postTime}>{new Date(item.createdAt).toLocaleDateString()}</Text>
+            <Text style={styles.postTime}>{formatDate(item.createdAt)}</Text>
           </View>
           {/* Options Menu - Only show for current user's posts */}
           {(item.userId === user?.id || item.user?.id === user?.id) && (
@@ -778,13 +855,24 @@ const dispatch = useDispatch();
                 </Text>
               </View>
             )}
+            
+            {/* Loading overlay when uploading */}
+            {uploadingAvatar && (
+              <View style={styles.avatarLoadingOverlay}>
+                <ActivityIndicator size="small" color="#fff" />
+              </View>
+            )}
+            
             <TouchableOpacity 
-              style={styles.editAvatarButton} 
+              style={[
+                styles.editAvatarButton,
+                uploadingAvatar && styles.editAvatarButtonDisabled
+              ]} 
               onPress={pickAndUploadAvatar} 
               disabled={uploadingAvatar}
             >
               <Ionicons 
-                name="camera" 
+                name={uploadingAvatar ? "hourglass" : "camera"} 
                 size={12} 
                 color="#fff" 
               />
@@ -793,7 +881,25 @@ const dispatch = useDispatch();
 
           <View style={styles.userInfo}>
             <Text style={styles.username}>{user?.username}</Text>
-            <Text style={styles.userEmail}>{user?.email}</Text>
+            
+            {/* Bio Section */}
+            <TouchableOpacity style={styles.bioContainer} onPress={openBioModal}>
+              {user?.bio ? (
+                <Text style={styles.bioText} numberOfLines={3}>
+                  {user.bio}
+                </Text>
+              ) : (
+                <Text style={styles.bioPlaceholder}>
+                  Add a bio to tell others about yourself
+                </Text>
+              )}
+              <Ionicons 
+                name="create-outline" 
+                size={14} 
+                color="#666" 
+                style={styles.bioEditIcon}
+              />
+            </TouchableOpacity>
             
             <View style={styles.statsContainer}>
               <View style={styles.statItem}>
@@ -921,7 +1027,31 @@ const dispatch = useDispatch();
           <FlatList
             data={comments}
             keyExtractor={(item) => item.id.toString()}
-            renderItem={renderComment}
+            renderItem={({ item }) => (
+              <CommentComponent
+                comment={item}
+                onCommentUpdate={(updatedComment) => {
+                  setComments(prev => prev.map(comment => 
+                    comment.id === updatedComment.id ? updatedComment : comment
+                  ));
+                }}
+                onCommentDelete={(commentId) => {
+                  setComments(prev => prev.filter(comment => comment.id !== commentId));
+                }}
+                onUserPress={(comment) => {
+                  const commentUserId = comment.userId || comment.user?.id || comment.authorId || comment.commenterId;
+                  if (commentUserId !== user?.id && comment.username) {
+                    navigation.navigate('ShowProfile', { 
+                      username: comment.username,
+                      userId: commentUserId
+                    });
+                  }
+                }}
+                isOwner={item.userId === user?.id || item.user?.id === user?.id}
+                currentUser={user}
+                formatDate={formatDate}
+              />
+            )}
             style={styles.commentsList}
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
@@ -1133,6 +1263,48 @@ const dispatch = useDispatch();
           </View>
         </View>
       </Modal>
+
+      {/* Bio Edit Modal */}
+      <Modal visible={bioModal.visible} animationType="slide" onRequestClose={closeBioModal}>
+        <KeyboardAvoidingView 
+          style={styles.bioModalContainer} 
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        >
+          <View style={styles.bioModalHeader}>
+            <TouchableOpacity onPress={closeBioModal}>
+              <Text style={styles.bioModalCancel}>Cancel</Text>
+            </TouchableOpacity>
+            <Text style={styles.bioModalTitle}>Edit Bio</Text>
+            <TouchableOpacity 
+              onPress={handleBioUpdate}
+              disabled={bioLoading}
+              style={[styles.bioModalSave, bioLoading && styles.bioModalSaveDisabled]}
+            >
+              {bioLoading ? (
+                <ActivityIndicator size="small" color="#007bff" />
+              ) : (
+                <Text style={styles.bioModalSaveText}>Save</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+          
+          <View style={styles.bioModalContent}>
+            <TextInput
+              style={styles.bioInput}
+              placeholder="Write something about yourself..."
+              value={bioContent}
+              onChangeText={setBioContent}
+              multiline
+              maxLength={150}
+              autoFocus
+              textAlignVertical="top"
+            />
+            <Text style={styles.bioCharacterCount}>
+              {bioContent.length}/150
+            </Text>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
     </View>
   );
 };
@@ -1216,6 +1388,22 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: '#fff',
   },
+  editAvatarButtonDisabled: {
+    backgroundColor: '#ccc',
+    opacity: 0.7,
+  },
+  avatarLoadingOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    borderRadius: 32.5,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 1,
+  },
   userInfo: {
     flex: 1,
   },
@@ -1223,12 +1411,35 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: '600',
     color: '#333',
-    marginBottom: 3,
+    marginBottom: 8,
   },
-  userEmail: {
+  bioContainer: {
+    backgroundColor: '#f8f9fa',
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#e9ecef',
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    minHeight: 50,
+  },
+  bioText: {
+    flex: 1,
     fontSize: 14,
-    color: '#666',
-    marginBottom: 10,
+    color: '#333',
+    lineHeight: 20,
+  },
+  bioPlaceholder: {
+    flex: 1,
+    fontSize: 14,
+    color: '#999',
+    fontStyle: 'italic',
+    lineHeight: 20,
+  },
+  bioEditIcon: {
+    marginLeft: 8,
+    marginTop: 2,
   },
   statsContainer: {
     flexDirection: 'row',
@@ -1708,6 +1919,74 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 16,
     fontWeight: '600',
+  },
+
+  // Bio Modal Styles
+  bioModalContainer: {
+    flex: 1,
+    backgroundColor: '#fff',
+  },
+  bioModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    paddingTop: Platform.OS === 'ios' ? 50 : 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e9ecef',
+    backgroundColor: '#fff',
+  },
+  bioModalTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#333',
+  },
+  bioModalCancel: {
+    fontSize: 16,
+    color: '#666',
+    fontWeight: '500',
+  },
+  bioModalSave: {
+    backgroundColor: '#007bff',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    minWidth: 70,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  bioModalSaveDisabled: {
+    backgroundColor: '#ccc',
+    opacity: 0.7,
+  },
+  bioModalSaveText: {
+    color: '#fff',
+    fontWeight: '600',
+    fontSize: 14,
+  },
+  bioModalContent: {
+    flex: 1,
+    padding: 16,
+  },
+  bioInput: {
+    flex: 1,
+    fontSize: 16,
+    color: '#333',
+    textAlignVertical: 'top',
+    borderWidth: 1,
+    borderColor: '#e9ecef',
+    borderRadius: 12,
+    padding: 16,
+    backgroundColor: '#f8f9fa',
+    minHeight: 120,
+    maxHeight: 200,
+  },
+  bioCharacterCount: {
+    textAlign: 'right',
+    marginTop: 8,
+    fontSize: 12,
+    color: '#999',
   },
 });
 

@@ -29,10 +29,40 @@ export default function RegisterScreen() {
   const [isLoading, setIsLoading] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [registeredEmail, setRegisteredEmail] = useState("");
+  
+  // Email validation states
+  const [emailError, setEmailError] = useState("");
+  const [emailTouched, setEmailTouched] = useState(false);
+
+  // Email validation function
+  const validateEmail = (email) => {
+    const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+    return emailRegex.test(email);
+  };
+
+  // Handle email input changes
+  const handleEmailChange = (text) => {
+    setEmail(text);
+    setEmailTouched(true);
+    
+    if (text === '') {
+      setEmailError('Email is required');
+    } else if (!validateEmail(text)) {
+      setEmailError('Please enter a valid email address');
+    } else {
+      setEmailError('');
+    }
+  };
 
   const handleRegister = async () => {
     if (!username || !email || !password) {
       Alert.alert("Error", "Please fill all fields");
+      return;
+    }
+
+    // Validate email format
+    if (!validateEmail(email)) {
+      Alert.alert("Invalid Email", "Please enter a valid email address");
       return;
     }
 
@@ -156,17 +186,28 @@ export default function RegisterScreen() {
 
                   <Animated.View
                     entering={FadeInDown.duration(1000).delay(200).springify()}
-                    style={styles.inputBox}
+                    style={[styles.inputBox, emailError && emailTouched ? styles.inputError : null]}
                   >
                     <TextInput
                       placeholder="Email"
                       placeholderTextColor={"gray"}
                       value={email}
-                      onChangeText={setEmail}
-                      keyboardType="text"
+                      onChangeText={handleEmailChange}
+                      keyboardType="email-address"
                       autoCapitalize="none"
+                      autoCorrect={false}
                     />
                   </Animated.View>
+                  
+                  {/* Email validation error message */}
+                  {emailError && emailTouched && (
+                    <Animated.View
+                      entering={FadeInDown.duration(300).springify()}
+                      style={styles.errorContainer}
+                    >
+                      <Text style={styles.errorText}>{emailError}</Text>
+                    </Animated.View>
+                  )}
 
                   <Animated.View
                     entering={FadeInDown.duration(1000).delay(400).springify()}
@@ -443,5 +484,21 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "600",
     textAlign: "center",
+  },
+  
+  // Email validation styles
+  inputError: {
+    borderColor: "#ff4444",
+    borderWidth: 1,
+  },
+  errorContainer: {
+    marginBottom: 10,
+    marginHorizontal: 20,
+  },
+  errorText: {
+    color: "#ff4444",
+    fontSize: 12,
+    textAlign: "left",
+    marginLeft: 5,
   },
 });
