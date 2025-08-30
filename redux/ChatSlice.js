@@ -65,7 +65,8 @@ const initialState = {
   chats: [],
   currentChat: null,
   messages: {},
-  isLoading: false,
+  isLoading: false, // For loading chats list
+  isLoadingMessages: false, // For loading individual chat messages
   error: null,
   typingUsers: {},
   unreadCounts: {},
@@ -192,10 +193,10 @@ const chatSlice = createSlice({
       
       // Load messages
       .addCase(loadChatMessages.pending, (state) => {
-        state.isLoading = true;
+        state.isLoadingMessages = true;
       })
       .addCase(loadChatMessages.fulfilled, (state, action) => {
-        state.isLoading = false;
+        state.isLoadingMessages = false;
         const { chatId, messages, page } = action.payload;
         
         if (page === 0) {
@@ -206,7 +207,7 @@ const chatSlice = createSlice({
         }
       })
       .addCase(loadChatMessages.rejected, (state, action) => {
-        state.isLoading = false;
+        state.isLoadingMessages = false;
         state.error = action.payload;
       })
       

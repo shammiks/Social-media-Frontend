@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
 import {
   View,
   Text,
@@ -26,7 +26,7 @@ import { logout, loginSuccess } from '../../redux/authSlice';
 import WebSocketService from '../../services/WebSocketService';
 import ChatAPI from '../../services/ChatApi';
 import Animated, { FadeInUp } from 'react-native-reanimated';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { Ionicons, Feather, MaterialIcons } from '@expo/vector-icons';
 import PagerView from 'react-native-pager-view';
 
@@ -49,6 +49,9 @@ const dispatch = useDispatch();
   const [commentsLoading, setCommentsLoading] = useState(false)
   const [downloading, setDownloading] = useState(false);
   const [imageLoading, setImageLoading] = useState(false);
+  const [editPostModal, setEditPostModal] = useState({ visible: false, post: null });
+  const [editContent, setEditContent] = useState('');
+  const [editLoading, setEditLoading] = useState(false);
   const pagerRef = useRef(null);
 
   const BASE_URL = 'http://192.168.43.36:8080';
@@ -99,6 +102,16 @@ const dispatch = useDispatch();
   useEffect(() => {
     fetchData();
   }, []);
+
+  // Real-time updates when screen comes into focus (e.g., after creating a post)
+  useFocusEffect(
+    useCallback(() => {
+      // Only refresh if not already loading to prevent duplicate requests
+      if (!loading && !refreshing) {
+        fetchData();
+      }
+    }, [])
+  );
 
   const pickAndUploadAvatar = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -324,6 +337,111 @@ const dispatch = useDispatch();
     }
   };
 
+  // Edit Post Functions
+  const openEditModal = (post) => {
+    setEditContent(post.content || '');
+    setEditPostModal({ visible: true, post });
+  };
+
+  const closeEditModal = () => {
+    setEditPostModal({ visible: false, post: null });
+    setEditContent('');
+  };
+
+  const updatePost = async () => {
+    if (!editContent.trim()) {
+      Alert.alert('Error', 'Post content cannot be empty');
+      return;
+    }
+
+    try {
+      setEditLoading(true);
+      const response = await axios.put(`${BASE_URL}/api/posts/${editPostModal.post.id}`, {
+        content: editContent.trim(),
+        imageUrl: editPostModal.post.imageUrl,
+        videoUrl: editPostModal.post.videoUrl,
+        pdfUrl: editPostModal.post.pdfUrl,
+        isPublic: editPostModal.post.isPublic
+      }, {
+        headers: { 
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      // Update the post in state
+      setPosts(prev => prev.map(post => 
+        post.id === editPostModal.post.id 
+          ? { ...post, content: editContent.trim() }
+          : post
+      ));
+
+      setSavedPosts(prev => prev.map(post => 
+        post.id === editPostModal.post.id 
+          ? { ...post, content: editContent.trim() }
+          : post
+      ));
+
+      closeEditModal();
+      Alert.alert('Success', 'Post updated successfully');
+    } catch (err) {
+      console.error('Update post error:', err);
+      Alert.alert('Error', 'Failed to update post');
+    } finally {
+      setEditLoading(false);
+    }
+  };
+
+  const deletePost = async (postId) => {
+    Alert.alert(
+      'Delete Post',
+      'Are you sure you want to delete this post? This action cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await axios.delete(`${BASE_URL}/api/posts/${postId}`, {
+                headers: { Authorization: `Bearer ${token}` }
+              });
+
+              // Remove the post from state
+              setPosts(prev => prev.filter(post => post.id !== postId));
+              setSavedPosts(prev => prev.filter(post => post.id !== postId));
+
+              Alert.alert('Success', 'Post deleted successfully');
+            } catch (err) {
+              console.error('Delete post error:', err);
+              Alert.alert('Error', 'Failed to delete post');
+            }
+          }
+        }
+      ]
+    );
+  };
+
+  const showPostOptions = (post) => {
+    Alert.alert(
+      'Post Options',
+      'What would you like to do with this post?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { 
+          text: 'Edit', 
+          onPress: () => openEditModal(post),
+          style: 'default'
+        },
+        { 
+          text: 'Delete', 
+          onPress: () => deletePost(post.id),
+          style: 'destructive'
+        }
+      ]
+    );
+  };
+
   const renderComment = ({ item }) => (
     <View style={styles.commentItem}>
       <View style={styles.commentHeader}>
@@ -346,7 +464,22 @@ const dispatch = useDispatch();
           style={styles.commentAvatar} 
         />
         <View style={styles.commentContent}>
-          <Text style={styles.commentUsername}>{item.username}</Text>
+          <TouchableOpacity onPress={() => {
+            // Check if this is the current user's comment
+            const commentUserId = item.userId || item.user?.id || item.authorId || item.commenterId;
+            if (commentUserId === user?.id) {
+              // Current user clicked on their own comment - no navigation needed (already on own profile)
+              return;
+            } else if (item.username) {
+              // Navigate to other user's profile
+              navigation.navigate('ShowProfile', { 
+                username: item.username,
+                userId: commentUserId
+              });
+            }
+          }}>
+            <Text style={styles.commentUsername}>{item.username}</Text>
+          </TouchableOpacity>
           <Text style={styles.commentText}>{item.content}</Text>
           <Text style={styles.commentTime}>{new Date(item.createdAt).toLocaleDateString()}</Text>
         </View>
@@ -436,6 +569,15 @@ const dispatch = useDispatch();
             <Text style={styles.postUsername}>{item.username}</Text>
             <Text style={styles.postTime}>{new Date(item.createdAt).toLocaleDateString()}</Text>
           </View>
+          {/* Options Menu - Only show for current user's posts */}
+          {(item.userId === user?.id || item.user?.id === user?.id) && (
+            <TouchableOpacity 
+              style={styles.optionsButton}
+              onPress={() => showPostOptions(item)}
+            >
+              <MaterialIcons name="more-vert" size={24} color="#666" />
+            </TouchableOpacity>
+          )}
         </View>
 
         {/* Post Content */}
@@ -461,7 +603,31 @@ const dispatch = useDispatch();
           )}
 
           {pdfUrl && (
-            <TouchableOpacity onPress={() => Linking.openURL(pdfUrl)}>
+            <TouchableOpacity onPress={async () => {
+              console.log('ProfileScreen - Attempting to open PDF URL:', pdfUrl);
+              
+              try {
+                // Handle spaces and special characters in PDF URLs
+                // First decode any existing encoding, then re-encode properly
+                let cleanUrl = decodeURIComponent(pdfUrl);
+                let finalUrl = encodeURI(cleanUrl);
+                
+                console.log('ProfileScreen - Original URL:', pdfUrl);
+                console.log('ProfileScreen - Cleaned URL:', cleanUrl);
+                console.log('ProfileScreen - Final encoded URL:', finalUrl);
+                
+                const supported = await Linking.canOpenURL(finalUrl);
+                if (supported) {
+                  await Linking.openURL(finalUrl);
+                } else {
+                  // Fallback: try the original URL
+                  await Linking.openURL(pdfUrl);
+                }
+              } catch (err) {
+                console.error('ProfileScreen - Failed to open PDF:', err);
+                Alert.alert('Error', 'Unable to open PDF file: ' + err.message);
+              }
+            }}>
               <View style={styles.pdfContainer}>
                 <MaterialIcons name="picture-as-pdf" size={24} color="#ff4444" />
                 <Text style={styles.pdfText}>View attached PDF</Text>
@@ -761,6 +927,76 @@ const dispatch = useDispatch();
             )}
           </View>
         </View>
+      </Modal>
+
+      {/* Edit Post Modal */}
+      <Modal
+        visible={editPostModal.visible}
+        animationType="slide"
+        onRequestClose={closeEditModal}
+      >
+        <KeyboardAvoidingView 
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          style={styles.editModalContainer}
+        >
+          <View style={styles.editModalHeader}>
+            <TouchableOpacity onPress={closeEditModal}>
+              <Ionicons name="close" size={24} color="#666" />
+            </TouchableOpacity>
+            <Text style={styles.editModalTitle}>Edit Post</Text>
+            <TouchableOpacity 
+              onPress={updatePost}
+              disabled={editLoading}
+              style={[styles.saveButton, editLoading && styles.saveButtonDisabled]}
+            >
+              {editLoading ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <Text style={styles.saveButtonText}>Save</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+          
+          <View style={styles.editModalContent}>
+            <TextInput
+              style={styles.editTextInput}
+              value={editContent}
+              onChangeText={setEditContent}
+              placeholder="What's on your mind?"
+              multiline
+              autoFocus
+            />
+            
+            {/* Show existing media preview */}
+            {editPostModal.post?.imageUrl && (
+              <View style={styles.mediaPreview}>
+                <Text style={styles.mediaLabel}>Image attached</Text>
+                <Image 
+                  source={{ 
+                    uri: editPostModal.post.imageUrl.startsWith('http') 
+                      ? editPostModal.post.imageUrl 
+                      : `${BASE_URL}${editPostModal.post.imageUrl}` 
+                  }} 
+                  style={styles.mediaPreviewImage} 
+                />
+              </View>
+            )}
+            
+            {editPostModal.post?.videoUrl && (
+              <View style={styles.mediaPreview}>
+                <Text style={styles.mediaLabel}>Video attached</Text>
+                <MaterialIcons name="videocam" size={24} color="#666" />
+              </View>
+            )}
+            
+            {editPostModal.post?.pdfUrl && (
+              <View style={styles.mediaPreview}>
+                <Text style={styles.mediaLabel}>PDF attached</Text>
+                <MaterialIcons name="picture-as-pdf" size={24} color="#ff4444" />
+              </View>
+            )}
+          </View>
+        </KeyboardAvoidingView>
       </Modal>
     </View>
   );
@@ -1174,6 +1410,82 @@ const styles = StyleSheet.create({
     color: '#fff',
     marginTop: 10,
     fontSize: 16,
+  },
+  
+  // Edit Post Modal Styles
+  optionsButton: {
+    padding: 8,
+    borderRadius: 20,
+  },
+  editModalContainer: {
+    flex: 1,
+    backgroundColor: '#fff',
+  },
+  editModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e0e0e0',
+    backgroundColor: '#fff',
+    paddingTop: Platform.OS === 'ios' ? 50 : 16,
+  },
+  editModalTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#333',
+  },
+  saveButton: {
+    backgroundColor: '#007bff',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    minWidth: 60,
+    alignItems: 'center',
+  },
+  saveButtonDisabled: {
+    backgroundColor: '#ccc',
+  },
+  saveButtonText: {
+    color: '#fff',
+    fontWeight: '600',
+    fontSize: 14,
+  },
+  editModalContent: {
+    flex: 1,
+    padding: 16,
+  },
+  editTextInput: {
+    fontSize: 16,
+    color: '#333',
+    textAlignVertical: 'top',
+    minHeight: 120,
+    maxHeight: 200,
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+    borderRadius: 12,
+    padding: 12,
+    backgroundColor: '#f8f9fa',
+  },
+  mediaPreview: {
+    marginTop: 16,
+    padding: 12,
+    backgroundColor: '#f8f9fa',
+    borderRadius: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  mediaLabel: {
+    fontSize: 14,
+    color: '#666',
+    marginRight: 8,
+  },
+  mediaPreviewImage: {
+    width: 60,
+    height: 60,
+    borderRadius: 8,
+    marginLeft: 8,
   },
 });
 

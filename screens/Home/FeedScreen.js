@@ -40,7 +40,7 @@ function ReadMoreText({ text, numberOfLines = 3 }) {
   );
 }
 
-function CommentsModal({ visible, onClose, postId, token, currentUser }) {
+function CommentsModal({ visible, onClose, postId, token, currentUser, navigation }) {
   const [comments, setComments] = useState([]);
   const [newComment, setNewComment] = useState('');
   const [loading, setLoading] = useState(false);
@@ -126,7 +126,22 @@ function CommentsModal({ visible, onClose, postId, token, currentUser }) {
           style={styles.commentAvatar} 
         />
         <View style={styles.commentContent}>
-          <Text style={styles.commentUsername}>{item.username}</Text>
+          <TouchableOpacity onPress={() => {
+            // Check if this is the current user's comment
+            const commentUserId = item.userId || item.user?.id || item.authorId || item.commenterId;
+            if (commentUserId === currentUser?.id) {
+              // Navigate to current user's own profile (Profile tab)
+              navigation.navigate('Profile');
+            } else if (item.username) {
+              // Navigate to other user's profile
+              navigation.navigate('ShowProfile', { 
+                username: item.username,
+                userId: commentUserId
+              });
+            }
+          }}>
+            <Text style={styles.commentUsername}>{item.username}</Text>
+          </TouchableOpacity>
           <Text style={styles.commentText}>{item.content}</Text>
           <Text style={styles.commentTime}>{new Date(item.createdAt).toLocaleDateString()}</Text>
         </View>
@@ -441,10 +456,17 @@ export default function FeedScreen() {
       return;
     }
     
-    navigation.navigate('ShowProfile', { 
-      username: item.username ,
-      userId: item.userId
-    });
+    // Check if this is the current user's post
+    if (item.userId === currentUser?.id) {
+      // Navigate to own profile screen (Profile tab)
+      navigation.navigate('Profile');
+    } else {
+      // Navigate to other user's profile screen
+      navigation.navigate('ShowProfile', { 
+        username: item.username,
+        userId: item.userId
+      });
+    }
   }}
 >
       <Image 
@@ -497,7 +519,25 @@ export default function FeedScreen() {
           />
         )}
         {pdfUrl && (
-          <TouchableOpacity onPress={() => Linking.openURL(pdfUrl)}>
+          <TouchableOpacity onPress={async () => {
+            try {
+              // Handle spaces and special characters in PDF URLs
+              // First decode any existing encoding, then re-encode properly
+              let cleanUrl = decodeURIComponent(pdfUrl);
+              let finalUrl = encodeURI(cleanUrl);
+              
+              const supported = await Linking.canOpenURL(finalUrl);
+              if (supported) {
+                await Linking.openURL(finalUrl);
+              } else {
+                // Fallback: try the original URL
+                await Linking.openURL(pdfUrl);
+              }
+            } catch (err) {
+              console.error('Failed to open PDF:', err);
+              Alert.alert('Error', 'Unable to open PDF file: ' + err.message);
+            }
+          }}>
             <View style={styles.pdfContainer}>
               <MaterialIcons name="picture-as-pdf" size={24} color="#ff4444" />
               <Text style={styles.pdfText}>View attached PDF</Text>
@@ -632,6 +672,7 @@ export default function FeedScreen() {
         postId={commentsModal.postId}
         token={token}
         currentUser={currentUser}
+        navigation={navigation}
       />
 
       {/* Full Screen Image Modal */}

@@ -18,10 +18,12 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import Animated, { FadeInUp } from 'react-native-reanimated';
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import { useSelector } from 'react-redux';
+import { useNavigation } from '@react-navigation/native';
 
 const API_URL = 'http://192.168.43.36:8080/api/posts/upload';
 
 const CreatePostScreen = () => {
+  const navigation = useNavigation();
   const token = useSelector((state) => state.auth.token);
   
   const [content, setContent] = useState('');
@@ -162,7 +164,20 @@ const CreatePostScreen = () => {
         setShowPoll(false);
         setPollQuestion('');
         setPollOptions(['', '']);
-        Alert.alert('Success', 'Post created successfully!');
+        
+        Alert.alert(
+          'Success', 
+          'Post created successfully!',
+          [
+            {
+              text: 'OK',
+              onPress: () => {
+                // Navigate back to trigger ProfileScreen refresh
+                navigation.goBack();
+              }
+            }
+          ]
+        );
       } else {
         const text = await response.text();
         let message = 'Failed to create post';

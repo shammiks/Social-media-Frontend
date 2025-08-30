@@ -14,7 +14,8 @@ import {
   KeyboardAvoidingView,
   Platform,
   Share,
-  Dimensions
+  Dimensions,
+  Linking
 } from 'react-native';
 import { useSelector, useDispatch } from 'react-redux';
 import axios from 'axios';
@@ -51,7 +52,7 @@ function ReadMoreText({ text, numberOfLines = 3 }) {
 
 
 // Comments Modal Component (unchanged)
-function CommentsModal({ visible, onClose, postId, token, currentUserId, currentUser }) {
+function CommentsModal({ visible, onClose, postId, token, currentUserId, currentUser, navigation }) {
   const [comments, setComments] = useState([]);
   const [newComment, setNewComment] = useState('');
   const [loading, setLoading] = useState(false);
@@ -141,7 +142,22 @@ function CommentsModal({ visible, onClose, postId, token, currentUserId, current
           style={styles.commentAvatar} 
         />
         <View style={styles.commentContent}>
-          <Text style={styles.commentUsername}>{item.username}</Text>
+          <TouchableOpacity onPress={() => {
+            // Check if this is the current user's comment
+            const commentUserId = item.userId || item.user?.id || item.authorId || item.commenterId;
+            if (commentUserId === currentUser?.id) {
+              // Navigate to current user's own profile (Profile tab)
+              navigation.navigate('Profile');
+            } else if (item.username) {
+              // Navigate to other user's profile
+              navigation.navigate('ShowProfile', { 
+                username: item.username,
+                userId: commentUserId
+              });
+            }
+          }}>
+            <Text style={styles.commentUsername}>{item.username}</Text>
+          </TouchableOpacity>
           <Text style={styles.commentText}>{item.content}</Text>
           <Text style={styles.commentTime}>{new Date(item.createdAt).toLocaleDateString()}</Text>
         </View>
@@ -954,7 +970,27 @@ const renderFollowButton = () => {
           />
         )}
         {item.pdfUrl && (
-          <TouchableOpacity onPress={() => Alert.alert('PDF tapped', item.pdfUrl)}>
+          <TouchableOpacity onPress={async () => {
+            const pdfUrl = item.pdfUrl.startsWith('http') ? item.pdfUrl : `http://192.168.43.36:8080${item.pdfUrl}`;
+            
+            try {
+              // Handle spaces and special characters in PDF URLs
+              // First decode any existing encoding, then re-encode properly
+              let cleanUrl = decodeURIComponent(pdfUrl);
+              let finalUrl = encodeURI(cleanUrl);
+              
+              const supported = await Linking.canOpenURL(finalUrl);
+              if (supported) {
+                await Linking.openURL(finalUrl);
+              } else {
+                // Fallback: try the original URL
+                await Linking.openURL(pdfUrl);
+              }
+            } catch (err) {
+              console.error('UserProfileScreen - Failed to open PDF:', err);
+              Alert.alert('Error', 'Unable to open PDF file: ' + err.message);
+            }
+          }}>
             <View style={styles.pdfContainer}>
               <MaterialIcons name="picture-as-pdf" size={24} color="#ff4444" />
               <Text style={styles.pdfText}>View attached PDF</Text>
@@ -1108,6 +1144,7 @@ const renderFollowButton = () => {
         token={token}
         currentUserId={currentUserId}
         currentUser={currentUser}
+        navigation={navigation}
       />
     </View>
   );

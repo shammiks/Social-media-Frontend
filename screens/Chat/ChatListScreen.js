@@ -17,7 +17,6 @@ import { useDispatch, useSelector } from 'react-redux';
 import { Ionicons } from '@expo/vector-icons';
 import { loadChats } from '../../redux/ChatSlice';
 import { formatDistanceToNow } from 'date-fns';
-import ChatAPI from '../../services/ChatApi';
 import WebSocketService from '../../services/WebSocketService';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect } from '@react-navigation/native';
@@ -53,24 +52,75 @@ const ChatListScreen = ({ navigation }) => {
     };
   }, [dispatch, user?.id]);
 
+  // Clear search when navigating away from screen
+  useEffect(() => {
+    const unsubscribe = navigation.addListener('blur', () => {
+      setSearchQuery('');
+    });
+
+    return unsubscribe;
+  }, [navigation]);
+
   // Refresh chats when screen comes into focus (like when coming back from ChatScreen)
   useFocusEffect(
     useCallback(() => {
+      // Clear search query when screen comes into focus
+      setSearchQuery('');
+      
       // Only refresh if not already loading to prevent duplicate requests
       if (!isLoading) {
         dispatch(loadChats());
       }
-    }, [dispatch, isLoading])
+    }, [dispatch])
   );
 
   useEffect(() => {
-    if (searchQuery) {
-      const filtered = chats.filter(chat =>
-        chat.chatName?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        chat.participants?.some(p => 
-          p.user?.displayName?.toLowerCase().includes(searchQuery.toLowerCase())
-        )
-      );
+    if (searchQuery.trim()) {
+      const filtered = chats.filter(chat => {
+        const searchLower = searchQuery.toLowerCase().trim();
+        
+        // Search in chat name
+        if (chat.chatName && chat.chatName.toLowerCase().includes(searchLower)) {
+          return true;
+        }
+        
+        // Search in participant names
+        if (chat.participants && chat.participants.length > 0) {
+          return chat.participants.some(participant => {
+            const user = participant.user;
+            if (!user) return false;
+            
+            // Search in display name
+            if (user.displayName && user.displayName.toLowerCase().includes(searchLower)) {
+              return true;
+            }
+            
+            // Search in first name
+            if (user.firstName && user.firstName.toLowerCase().includes(searchLower)) {
+              return true;
+            }
+            
+            // Search in last name
+            if (user.lastName && user.lastName.toLowerCase().includes(searchLower)) {
+              return true;
+            }
+            
+            // Search in username
+            if (user.username && user.username.toLowerCase().includes(searchLower)) {
+              return true;
+            }
+            
+            // Search in email
+            if (user.email && user.email.toLowerCase().includes(searchLower)) {
+              return true;
+            }
+            
+            return false;
+          });
+        }
+        
+        return false;
+      });
       setFilteredChats(filtered);
     } else {
       setFilteredChats(chats);
@@ -279,6 +329,14 @@ const ChatListScreen = ({ navigation }) => {
           value={searchQuery}
           onChangeText={setSearchQuery}
         />
+        {searchQuery.length > 0 && (
+          <TouchableOpacity 
+            style={styles.clearButton} 
+            onPress={() => setSearchQuery('')}
+          >
+            <Ionicons name="close-circle" size={20} color="#666" />
+          </TouchableOpacity>
+        )}
       </View>
       
       <FlatList
@@ -336,6 +394,10 @@ const styles = StyleSheet.create({
     flex: 1,
     height: 40,
     fontSize: 16,
+  },
+  clearButton: {
+    marginLeft: 8,
+    padding: 4,
   },
   chatList: {
     flex: 1,
