@@ -13,7 +13,6 @@ import {
 } from 'react-native';
 import { useDispatch, useSelector } from 'react-redux';
 import { Ionicons } from '@expo/vector-icons';
-import { createNewChat } from '../../redux/ChatSlice'; // Import the action to create a new chat
 import ChatAPI from '../../services/ChatApi'; // Import the ChatAPI service
 
 const CreateChatScreen = ({ navigation }) => {

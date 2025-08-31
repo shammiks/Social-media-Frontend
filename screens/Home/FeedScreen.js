@@ -574,9 +574,7 @@ export default function FeedScreen() {
   };
 
   const handleNotificationPress = () => {
-    // Navigate to notifications screen when implemented
-    // navigation.navigate('Notifications');
-    Alert.alert('Notifications', 'Notifications feature coming soon!');
+    navigation.navigate('Notifications');
   };
 
   const openImageModal = (imageUrl) => {

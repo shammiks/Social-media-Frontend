@@ -25,6 +25,7 @@ import { Video } from 'expo-av';
 import * as Animatable from 'react-native-animatable';
 import { API_ENDPOINTS, getUserProfileEndpoint, createAuthHeaders } from '../../utils/apiConfig';
 import ChatAPI from '../../services/ChatApi';
+import NotificationIntegrationService from '../../services/NotificationIntegrationService';
 import { loadChats } from '../../redux/ChatSlice';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import CommentComponent from '../../components/Comments/CommentComponent';
@@ -92,21 +93,19 @@ function CommentsModal({ visible, onClose, postId, token, currentUserId, current
 
     try {
       setSubmitting(true);
-      const res = await axios.post(`${API_ENDPOINTS.COMMENTS}/${postId}`, {
-        content: newComment.trim()
-      }, {
-        headers: { 
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        }
-      });
+      // Use the new notification-integrated service
+      const res = await NotificationIntegrationService.addComment(
+        postId, 
+        newComment.trim(), 
+        token
+      );
 
       // Enhance the comment with current user data for real-time display
       const enhancedComment = {
-        ...res.data,
-        username: currentUser?.username || res.data.username,
-        userId: currentUser?.id || res.data.userId,
-        createdAt: res.data.createdAt || new Date().toISOString(),
+        ...res,
+        username: currentUser?.username || res.username,
+        userId: currentUser?.id || res.userId,
+        createdAt: res.createdAt || new Date().toISOString(),
         likeCount: 0,
         likedByCurrentUser: false,
         replyCount: 0,
@@ -525,89 +524,59 @@ const checkFollowStatus = async (targetUserId, headers) => {
   const previousFollowersCount = followersCount;
   const cacheKey = getFollowCacheKey(currentUserId, targetUserId);
 
+  setFollowLoading(true);
+
+  // Optimistic update
+  const newFollowState = !isFollowing;
+  const newFollowersCount = isFollowing ? Math.max(0, followersCount - 1) : followersCount + 1;
+  
+  setIsFollowing(newFollowState);
+  setFollowersCount(newFollowersCount);
+
+  const headers = {
+    'Authorization': `Bearer ${token}`,
+    'Content-Type': 'application/json',
+    'Accept': 'application/json',
+  };
+  
   try {
-    setFollowLoading(true);
-
-    // Optimistic update
-    const newFollowState = !isFollowing;
-    const newFollowersCount = isFollowing ? Math.max(0, followersCount - 1) : followersCount + 1;
-    
-    setIsFollowing(newFollowState);
-    setFollowersCount(newFollowersCount);
-
-    const headers = {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-      'Accept': 'application/json',
-    };
-    
-    let response;
-    let success = false;
-    
-    // Try different follow endpoints in order of preference
-    const followEndpoints = [
-      {
-        name: 'toggle',
-        method: 'post',
-        url: `${API_ENDPOINTS.FOLLOW}/toggle?followeeId=${targetUserId}`,
-        data: {}
-      },
-      {
-        name: previousFollowState ? 'unfollow' : 'follow',
-        method: 'post', 
-        url: `${API_ENDPOINTS.FOLLOW}/${previousFollowState ? 'unfollow' : 'follow'}/${targetUserId}`,
-        data: {}
-      }
-    ];
-    
-    for (const endpoint of followEndpoints) {
-      try {
-        if (endpoint.method === 'post') {
-          response = await axios.post(endpoint.url, endpoint.data, { headers });
+      // Use the new notification-integrated service
+      const response = await NotificationIntegrationService.toggleFollow(
+        targetUserId, 
+        token, 
+        previousFollowState
+      );
+      
+      // Extract final state from response
+      let finalFollowState = newFollowState;
+      let finalFollowersCount = newFollowersCount;
+      
+      if (response && typeof response === 'object') {
+        if (response.isFollowing !== undefined) {
+          finalFollowState = response.isFollowing;
+        } else if (response.following !== undefined) {
+          finalFollowState = response.following;
         }
         
-        success = true;
-        break;
-      } catch (endpointError) {
-        console.warn(`${endpoint.name} endpoint failed:`, endpointError.response?.status, endpointError.message);
-        continue;
+        if (response.followersCount !== undefined) {
+          finalFollowersCount = response.followersCount;
+        }
       }
-    }
-    
-    if (!success) {
-      throw new Error('All follow endpoints failed');
-    }
-    
-    // Extract final state from response
-    let finalFollowState = newFollowState;
-    let finalFollowersCount = newFollowersCount;
-    
-    if (response?.data) {
-      if (response.data.isFollowing !== undefined) {
-        finalFollowState = response.data.isFollowing;
-      } else if (response.data.following !== undefined) {
-        finalFollowState = response.data.following;
-      }
-      
-      if (response.data.followersCount !== undefined) {
-        finalFollowersCount = response.data.followersCount;
-      }
-    }
 
-    // Update UI state
-    setIsFollowing(finalFollowState);
-    setFollowersCount(finalFollowersCount);
-    
-    // CRITICAL: Update cache with new follow state
-    const newCacheEntry = {
-      isFollowing: finalFollowState,
-      followersCount: finalFollowersCount,
-      timestamp: Date.now()
-    };
-    
-    setFollowCache(prev => new Map(prev).set(cacheKey, newCacheEntry));
-    
-  } catch (err) {
+      // Update UI state
+      setIsFollowing(finalFollowState);
+      setFollowersCount(finalFollowersCount);
+      
+      // CRITICAL: Update cache with new follow state
+      const newCacheEntry = {
+        isFollowing: finalFollowState,
+        followersCount: finalFollowersCount,
+        timestamp: Date.now()
+      };
+      
+      setFollowCache(prev => new Map(prev).set(cacheKey, newCacheEntry));
+      
+    } catch (err) {
     console.error('Follow error:', err);
     
     // Revert optimistic updates
@@ -672,13 +641,13 @@ const startChat = async () => {
       // Navigate directly to the chat screen with additional user context
       navigation.navigate('ChatScreen', { 
         chat: response,
-        // Pass the target user info for display purposes
-        targetUser: {
+        // Pass the target user info for display purposes (with null checks)
+        targetUser: profile ? {
           id: profile.id,
           username: profile.username,
           displayName: profile.displayName || profile.username,
           imageUrl: profile.imageUrl
-        }
+        } : null
       });
     } else {
       throw new Error('Invalid response from server');

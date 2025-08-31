@@ -26,6 +26,7 @@ import { useSelector, useDispatch } from 'react-redux';
 import { logout, loginSuccess } from '../../redux/authSlice';
 import WebSocketService from '../../services/WebSocketService';
 import ChatAPI from '../../services/ChatApi';
+import NotificationIntegrationService from '../../services/NotificationIntegrationService';
 import Animated, { FadeInUp } from 'react-native-reanimated';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { Ionicons, Feather, MaterialIcons } from '@expo/vector-icons';
@@ -276,13 +277,12 @@ const dispatch = useDispatch();
     );
 
     try {
-      const res = await axios.post(`${BASE_URL}/api/posts/${postId}/like`, {}, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      // Use the new notification-integrated service
+      const res = await NotificationIntegrationService.likePost(postId, token, currentPost?.isLikedByCurrentUser);
 
       // Update with server response for consistency
-      const serverLikeState = res.data.isLiked || res.data.likedByCurrentUser || res.data.liked;
-      const serverLikeCount = res.data.likesCount || res.data.likes;
+      const serverLikeState = res.isLiked || res.likedByCurrentUser || res.liked;
+      const serverLikeCount = res.likesCount || res.likes;
 
       setPosts(prev =>
         prev.map(post =>
@@ -367,14 +367,12 @@ const dispatch = useDispatch();
     if (!newComment.trim()) return;
 
     try {
-      const res = await axios.post(`${BASE_URL}/api/comments/${commentsModal.postId}`, {
-        content: newComment.trim()
-      }, {
-        headers: { 
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        }
-      });
+      // Use the new notification-integrated service
+      const res = await NotificationIntegrationService.addComment(
+        commentsModal.postId, 
+        newComment.trim(), 
+        token
+      );
 
       // Enhance the comment with current user data for real-time display
       const enhancedComment = {

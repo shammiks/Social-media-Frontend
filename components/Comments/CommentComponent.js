@@ -13,6 +13,7 @@ import { MaterialIcons, Ionicons } from '@expo/vector-icons';
 import axios from 'axios';
 import { useSelector } from 'react-redux';
 import { API_ENDPOINTS } from '../../utils/apiConfig';
+import NotificationIntegrationService from '../../services/NotificationIntegrationService';
 
 const CommentComponent = ({ 
   comment, 
@@ -41,17 +42,14 @@ const CommentComponent = ({
     
     try {
       setLikingComment(true);
-      const response = await axios.post(
-        `${API_ENDPOINTS.COMMENTS}/${comment.id}/like`,
-        {},
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
+      // Use the new notification-integrated service
+      const response = await NotificationIntegrationService.likeComment(comment.id, token);
       
       // Update comment like status
       const updatedComment = {
         ...comment,
-        likedByCurrentUser: response.data.liked,
-        likeCount: comment.likeCount + (response.data.liked ? 1 : -1)
+        likedByCurrentUser: response.liked,
+        likeCount: comment.likeCount + (response.liked ? 1 : -1)
       };
       
       onCommentUpdate(updatedComment);
@@ -92,16 +90,17 @@ const CommentComponent = ({
     
     try {
       setSubmittingReply(true);
-      console.log('Adding reply with URL:', `${API_ENDPOINTS.COMMENTS}/${comment.id}/reply`);
+      console.log('Adding reply with notification integration');
       console.log('Token exists:', !!token);
       
-      const response = await axios.post(
-        `${API_ENDPOINTS.COMMENTS}/${comment.id}/reply`,
-        { content: replyText.trim() },
-        { headers: { Authorization: `Bearer ${token}` } }
+      // Use the new notification-integrated service
+      const response = await NotificationIntegrationService.addReply(
+        comment.id, 
+        replyText.trim(), 
+        token
       );
       
-      setReplies(prev => [...prev, response.data]);
+      setReplies(prev => [...prev, response]);
       setReplyText('');
       setShowReplyInput(false);
       setShowReplies(true);

@@ -248,6 +248,7 @@ class ChatAPI {
             content: "Welcome to the chat! 👋",
             messageType: "TEXT",
             createdAt: new Date(Date.now() - 1000 * 60 * 60).toISOString(), // 1 hour ago
+            senderId: 2, // Different user
             sender: {
               id: 2,
               displayName: "Team Member",
@@ -259,6 +260,7 @@ class ChatAPI {
             content: "How is everyone doing today?",
             messageType: "TEXT",
             createdAt: new Date(Date.now() - 1000 * 60 * 30).toISOString(), // 30 minutes ago
+            senderId: 3, // Different user
             sender: {
               id: 3,
               displayName: "John Doe",
@@ -270,6 +272,7 @@ class ChatAPI {
             content: "Great! Working on the new features.",
             messageType: "TEXT",
             createdAt: new Date(Date.now() - 1000 * 60 * 15).toISOString(), // 15 minutes ago
+            senderId: 1, // This should match current user ID for testing
             sender: {
               id: 1,
               displayName: "You",

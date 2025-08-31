@@ -171,13 +171,10 @@ const ChatListScreen = ({ navigation }) => {
     // For direct chats, show the other participant's name
     const otherParticipant = chat.participants?.find(p => p.user?.id !== user?.id);
     
-    if (otherParticipant?.user?.displayName) {
-      return otherParticipant.user.displayName;
-    }
-    
-    // Try username (but handle null usernames)
-    if (otherParticipant?.user?.username) {
-      return otherParticipant.user.username;
+    if (otherParticipant?.user) {
+      const otherUser = otherParticipant.user;
+      // Use the same logic as ChatScreen: displayName || username || 'User'
+      return otherUser.displayName || otherUser.username || 'User';
     }
     
     // Try to get user info from cache if participant exists but no user details
@@ -185,23 +182,7 @@ const ChatListScreen = ({ navigation }) => {
       const userId = otherParticipant.userId || otherParticipant.user.id;
       const cachedUser = getCachedUser(userId);
       if (cachedUser) {
-        return cachedUser.displayName || cachedUser.username;
-      }
-    }
-    
-    // Additional fallbacks for users with null usernames
-    if (otherParticipant?.user) {
-      const user = otherParticipant.user;
-      
-      // Try email prefix (before @)
-      if (user.email) {
-        const emailPrefix = user.email.split('@')[0];
-        return emailPrefix;
-      }
-      
-      // Last resort: User ID
-      if (user.id) {
-        return `User ${user.id}`;
+        return cachedUser.displayName || cachedUser.username || 'User';
       }
     }
     
@@ -209,7 +190,7 @@ const ChatListScreen = ({ navigation }) => {
     if (chat.participants && chat.participants.length > 0) {
       const otherParticipantCount = chat.participants.filter(p => p.user?.id !== user?.id).length;
       if (otherParticipantCount === 1) {
-        return 'Direct Chat';
+        return 'User';
       }
     }
     
@@ -304,10 +285,6 @@ const ChatListScreen = ({ navigation }) => {
     }
   }, [error, dispatch, navigation]);
 
-  const handleCreateChat = () => {
-    navigation.navigate('CreateChatScreen');
-  };
-
   return (
     <SafeAreaView style={styles.container}>
       <KeyboardAvoidingView 
@@ -316,9 +293,6 @@ const ChatListScreen = ({ navigation }) => {
       >
         <View style={styles.header}>
         <Text style={styles.headerTitle}>Messages</Text>
-        <TouchableOpacity style={styles.createButton} onPress={handleCreateChat}>
-          <Ionicons name="create-outline" size={24} color="#007AFF" />
-        </TouchableOpacity>
       </View>
       
       <View style={styles.searchContainer}>
@@ -374,9 +348,6 @@ const styles = StyleSheet.create({
     fontSize: 24,
     fontWeight: 'bold',
     color: '#000',
-  },
-  createButton: {
-    padding: 8,
   },
   searchContainer: {
     flexDirection: 'row',

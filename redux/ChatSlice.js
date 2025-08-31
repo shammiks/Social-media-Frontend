@@ -88,12 +88,18 @@ const chatSlice = createSlice({
     addMessageViaSocket: (state, action) => {
       const { chatId, message } = action.payload;
       
+      // Null check for message
+      if (!message) {
+        console.warn('addMessageViaSocket: Received null message, ignoring');
+        return;
+      }
+      
       if (!state.messages[chatId]) {
         state.messages[chatId] = [];
       }
       
       // Check if message already exists (avoid duplicates)
-      const exists = state.messages[chatId].some(msg => msg.id === message.id);
+      const exists = state.messages[chatId].some(msg => msg && msg.id === message.id);
       if (!exists) {
         // Enhance message with proper sender identification if needed
         const enhancedMessage = {
@@ -199,11 +205,14 @@ const chatSlice = createSlice({
         state.isLoadingMessages = false;
         const { chatId, messages, page } = action.payload;
         
+        // Filter out null messages to prevent rendering errors
+        const validMessages = (messages || []).filter(msg => msg != null);
+        
         if (page === 0) {
-          state.messages[chatId] = messages.reverse();
+          state.messages[chatId] = validMessages.reverse();
         } else {
           // Append older messages for pagination
-          state.messages[chatId] = [...messages.reverse(), ...state.messages[chatId]];
+          state.messages[chatId] = [...validMessages.reverse(), ...state.messages[chatId]];
         }
       })
       .addCase(loadChatMessages.rejected, (state, action) => {
