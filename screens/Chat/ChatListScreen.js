@@ -202,7 +202,17 @@ const ChatListScreen = ({ navigation }) => {
     const displayName = getChatDisplayName(chat);
     let avatarUrl = null;
     if (otherParticipant?.user) {
+      // Robust avatar logic: try all possible fields
       avatarUrl = otherParticipant.user.avatar || otherParticipant.user.profileImageUrl || otherParticipant.user.profilePicture;
+      // If avatarUrl is a relative path, prepend BASE_URL if needed
+      if (avatarUrl && !avatarUrl.startsWith('http')) {
+        try {
+          const { BASE_URL } = require('../../utils/apiConfig');
+          avatarUrl = BASE_URL.replace(/\/$/, '') + (avatarUrl.startsWith('/') ? avatarUrl : '/' + avatarUrl);
+        } catch (e) {}
+      }
+      // Debug log
+      console.log('[ChatListScreen] Avatar URL for chat', chat.id, ':', avatarUrl);
     }
     if (avatarUrl) {
       return { uri: avatarUrl };

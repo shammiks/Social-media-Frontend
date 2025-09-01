@@ -635,17 +635,25 @@ const ChatScreen = ({ route, navigation }) => {
             <View style={styles.headerAvatar}>
               <Image
                 source={(function() {
-                  // Try to get other participant's avatar for private chats
+                  // Robust avatar logic: try all possible fields
                   const otherParticipant = chat.participants?.find(p => p.user?.id !== user?.id);
                   let avatarUrl = null;
                   if (otherParticipant?.user) {
                     avatarUrl = otherParticipant.user.avatar || otherParticipant.user.profileImageUrl || otherParticipant.user.profilePicture;
+                    if (avatarUrl && !avatarUrl.startsWith('http')) {
+                      try {
+                        const { BASE_URL } = require('../../utils/apiConfig');
+                        avatarUrl = BASE_URL.replace(/\/$/, '') + (avatarUrl.startsWith('/') ? avatarUrl : '/' + avatarUrl);
+                      } catch (e) {}
+                    }
+                    // Debug log
+                    console.log('[ChatScreen Header] Avatar URL for chat', chat.id, ':', avatarUrl);
                   }
                   if (avatarUrl) {
                     return { uri: avatarUrl };
                   }
                   // Fallback to generated avatar
-                  return { uri: `https://ui-avatars.com/api/?name=${getChatDisplayName(chat)}&background=fff&color=6C7CE7&size=40` };
+                  return { uri: `https://ui-avatars.com/api/?name=${encodeURIComponent((otherParticipant?.user?.displayName || getChatDisplayName(chat)))}&background=fff&color=6C7CE7&size=40` };
                 })()}
                 style={styles.headerAvatarImage}
               />
