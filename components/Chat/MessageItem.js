@@ -7,9 +7,13 @@ import {
   Image,
   Platform,
   ActionSheetIOS,
+  Modal,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Video } from 'expo-av';
+
+
+import { useState } from 'react';
 
 const MessageItem = ({ 
   message, 
@@ -19,6 +23,10 @@ const MessageItem = ({
   onReactionPress, 
   isMessageMine 
 }) => {
+  // State for media modal
+  const [showMediaModal, setShowMediaModal] = useState(false);
+  const [modalMediaType, setModalMediaType] = useState('IMAGE');
+
   // Null check for message
   if (!message) {
     console.warn('MessageItem: Received null/undefined message, skipping render');
@@ -79,15 +87,15 @@ const MessageItem = ({
     
     // If it's my message, use my user info from auth state (most reliable)
     if (isMessageMine && user) {
-      const myAvatar = user.avatar || user.profilePicture || user.profileImageUrl;
+      const myAvatar = user.avatar || user.profileImageUrl || user.profilePicture;
       return myAvatar;
     }
     
     // For other users' messages, check sender object first
     if (message.sender) {
-      const profilePic = message.sender.profilePicture || 
-                        message.sender.avatar || 
-                        message.sender.profileImageUrl;
+      const profilePic = message.sender.avatar || 
+                        message.sender.profileImageUrl ||
+                        message.sender.profilePicture;
       if (profilePic) {
         return profilePic;
       }
@@ -98,9 +106,9 @@ const MessageItem = ({
       p.user?.id === (message.senderId || message.sender?.id)
     );
     if (sender?.user) {
-      const profilePic = sender.user.profilePicture || 
-                        sender.user.avatar || 
-                        sender.user.profileImageUrl;
+      const profilePic = sender.user.avatar || 
+                        sender.user.profileImageUrl ||
+                        sender.user.profilePicture;
       if (profilePic) {
         return profilePic;
       }
@@ -153,41 +161,76 @@ const MessageItem = ({
           </View>
         )}
         
+
+        {/* Fullscreen media modal */}
+        {showMediaModal && (
+          <Modal
+            visible={showMediaModal}
+            transparent={true}
+            animationType="fade"
+            onRequestClose={() => setShowMediaModal(false)}
+          >
+            <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.95)', justifyContent: 'center', alignItems: 'center' }}>
+              <TouchableOpacity style={{ position: 'absolute', top: 40, right: 20, zIndex: 2 }} onPress={() => setShowMediaModal(false)}>
+                <Ionicons name="close" size={36} color="#fff" />
+              </TouchableOpacity>
+              {modalMediaType === 'IMAGE' ? (
+                <Image
+                  source={{ uri: message.mediaUrl }}
+                  style={{ width: '95%', height: '70%', borderRadius: 16, resizeMode: 'contain' }}
+                />
+              ) : (
+                <Video
+                  source={{ uri: message.mediaUrl }}
+                  style={{ width: '95%', height: 320, borderRadius: 16, backgroundColor: '#000' }}
+                  useNativeControls
+                  resizeMode="contain"
+                  shouldPlay
+                />
+              )}
+            </View>
+          </Modal>
+        )}
+
         {/* Show image if messageType is IMAGE and mediaUrl exists */}
         {message.messageType === 'IMAGE' && message.mediaUrl ? (
-          <Image
-            source={{ uri: message.mediaUrl }}
-            style={{
-              width: '100%',
-              maxWidth: 320,
-              height: undefined,
-              aspectRatio: 1,
-              borderRadius: 12,
-              marginBottom: 6,
-              alignSelf: 'center',
-            }}
-            resizeMode="cover"
-          />
+          <TouchableOpacity onPress={() => { setModalMediaType('IMAGE'); setShowMediaModal(true); }} activeOpacity={0.85}>
+            <Image
+              source={{ uri: message.mediaUrl }}
+              style={{
+                width: '100%',
+                maxWidth: 320,
+                height: undefined,
+                aspectRatio: 1,
+                borderRadius: 12,
+                marginBottom: 6,
+                alignSelf: 'center',
+              }}
+              resizeMode="cover"
+            />
+          </TouchableOpacity>
         ) : null}
 
         {/* Show video if messageType is VIDEO and mediaUrl exists */}
         {message.messageType === 'VIDEO' && message.mediaUrl ? (
-          <Video
-            source={{ uri: message.mediaUrl }}
-            style={{
-              width: '95%',
-              minWidth: 280,
-              maxWidth: 400,
-              height: 250,
-              borderRadius: 12,
-              marginBottom: 6,
-              alignSelf: 'center',
-              backgroundColor: '#000',
-            }}
-            useNativeControls
-            resizeMode="contain"
-            shouldPlay={false}
-          />
+          <TouchableOpacity onPress={() => { setModalMediaType('VIDEO'); setShowMediaModal(true); }} activeOpacity={0.85}>
+            <Video
+              source={{ uri: message.mediaUrl }}
+              style={{
+                width: '95%',
+                minWidth: 280,
+                maxWidth: 400,
+                height: 250,
+                borderRadius: 12,
+                marginBottom: 6,
+                alignSelf: 'center',
+                backgroundColor: '#000',
+              }}
+              useNativeControls
+              resizeMode="contain"
+              shouldPlay={false}
+            />
+          </TouchableOpacity>
         ) : null}
 
         {/* Show text content for non-media or as caption */}
@@ -199,7 +242,7 @@ const MessageItem = ({
             {message.content}
           </Text>
         ) : null}
-        
+
         {/* Reactions */}
         {message.reactions && message.reactions.length > 0 && (
           <View style={styles.reactionsContainer}>

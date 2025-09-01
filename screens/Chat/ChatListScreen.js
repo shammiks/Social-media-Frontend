@@ -198,10 +198,20 @@ const ChatListScreen = ({ navigation }) => {
   };
 
   const getChatAvatar = (chat) => {
+    // For private chats, try to get the other participant's profile picture
     const otherParticipant = chat.participants?.find(p => p.user?.id !== user?.id);
     const displayName = getChatDisplayName(chat);
     
-    // Always use ui-avatars.com to generate avatar with user initials
+    if (otherParticipant?.user) {
+      const otherUser = otherParticipant.user;
+      // Check for profile picture in multiple possible fields
+      const profilePic = otherUser.avatar || otherUser.profileImageUrl || otherUser.profilePicture;
+      if (profilePic) {
+        return { uri: profilePic };
+      }
+    }
+    
+    // Fallback to ui-avatars.com with user initials
     return { 
       uri: `https://ui-avatars.com/api/?name=${encodeURIComponent(displayName)}&background=6C7CE7&color=fff&size=50` 
     };

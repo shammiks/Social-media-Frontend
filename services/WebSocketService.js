@@ -15,6 +15,7 @@ class WebSocketService {
     this.shouldReconnect = true;
     this.dispatch = null; // Store Redux dispatch
     this.currentUserId = null;
+    this.heartbeatInterval = null;
   }
 
   // Method to set Redux dispatch for handling WebSocket messages
@@ -64,22 +65,34 @@ class WebSocketService {
         heartbeatOutgoing: 10000,
         
         onConnect: (frame) => {
+          console.log('WebSocket connected successfully');
           this.isConnected = true;
           this.isConnecting = false;
           this.reconnectAttempts = 0;
           this.sendConnect();
           
+          // Start heartbeat to keep connection alive
+          this.startHeartbeat();
+          
           // Subscribe to user-specific queues immediately after connection
           if (this.currentUserId) {
+            console.log('Subscribing to user queues after connection');
             this.subscribeToUserQueues();
+          } else {
+            console.warn('No current user ID available for subscription');
           }
         },
         
         onDisconnect: (frame) => {
+          console.log('WebSocket disconnected:', frame?.reason || 'Unknown reason');
           this.isConnected = false;
           this.isConnecting = false;
           
+          // Stop heartbeat when disconnected
+          this.stopHeartbeat();
+          
           if (this.shouldReconnect && frame && frame.reason !== 'manual') {
+            console.log('Attempting to reconnect...');
             this.handleReconnect();
           }
         },
@@ -126,6 +139,9 @@ class WebSocketService {
 
   disconnect() {
     this.shouldReconnect = false;
+    
+    // Stop heartbeat
+    this.stopHeartbeat();
     
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer);
@@ -208,18 +224,23 @@ class WebSocketService {
   // Subscribe to user-specific queues for receiving messages
   subscribeToUserQueues() {
     if (!this.client || !this.isConnected || !this.currentUserId) {
+      console.warn('Cannot subscribe to user queues: not connected or no user ID');
       return;
     }
+
+    console.log(`Subscribing to user queues for user: ${this.currentUserId}`);
 
     // Subscribe to message queue
     this.client.subscribe(`/user/${this.currentUserId}/queue/messages`, (message) => {
       try {
         const data = JSON.parse(message.body);
+        console.log('WebSocket message received:', data);
         
         if (this.dispatch) {
           // Handle different message types
           switch (data.type) {
             case 'NEW_MESSAGE':
+              console.log('Dispatching new message:', data.data);
               // Dispatch the action directly
               this.dispatch({
                 type: 'chat/addMessageViaSocket',
@@ -230,6 +251,7 @@ class WebSocketService {
               });
               break;
             case 'MESSAGE_UPDATED':
+              console.log('Dispatching message update:', data.data);
               this.dispatch({
                 type: 'chat/updateMessageViaSocket',
                 payload: {
@@ -240,6 +262,7 @@ class WebSocketService {
               });
               break;
             case 'MESSAGE_DELETED':
+              console.log('Dispatching message deletion:', data.data);
               this.dispatch({
                 type: 'chat/deleteMessageViaSocket',
                 payload: {
@@ -248,7 +271,11 @@ class WebSocketService {
                 }
               });
               break;
+            default:
+              console.log('Unknown message type:', data.type);
           }
+        } else {
+          console.warn('No dispatch function available for message handling');
         }
       } catch (error) {
         console.error('Error parsing message:', error);
@@ -390,10 +417,36 @@ class WebSocketService {
 
   sendHeartbeat() {
     if (this.client && this.isConnected) {
-      this.client.publish({
-        destination: '/app/heartbeat',
-        body: JSON.stringify({ timestamp: Date.now() }),
-      });
+      try {
+        this.client.publish({
+          destination: '/app/heartbeat',
+          body: JSON.stringify({ timestamp: Date.now() }),
+        });
+        console.log('Heartbeat sent');
+      } catch (error) {
+        console.error('Failed to send heartbeat:', error);
+      }
+    }
+  }
+
+  // Start periodic heartbeat
+  startHeartbeat() {
+    if (this.heartbeatInterval) {
+      clearInterval(this.heartbeatInterval);
+    }
+    
+    this.heartbeatInterval = setInterval(() => {
+      if (this.isConnected) {
+        this.sendHeartbeat();
+      }
+    }, 30000); // Send heartbeat every 30 seconds
+  }
+
+  // Stop heartbeat
+  stopHeartbeat() {
+    if (this.heartbeatInterval) {
+      clearInterval(this.heartbeatInterval);
+      this.heartbeatInterval = null;
     }
   }
 
