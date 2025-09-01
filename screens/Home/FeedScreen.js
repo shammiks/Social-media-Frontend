@@ -621,7 +621,7 @@ export default function FeedScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: '#f8f9fa' }}>
-      <StatusBar barStyle="dark-content" backgroundColor="#fff" />
+  <StatusBar barStyle="dark-content" />
       
       {/* Header with App Icon and Notification */}
       <View style={styles.header}>

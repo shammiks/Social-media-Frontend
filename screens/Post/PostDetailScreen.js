@@ -12,12 +12,13 @@ import {
 } from 'react-native';
 import { useSelector } from 'react-redux';
 import { Ionicons } from '@expo/vector-icons';
+import CommentComponent from '../../components/Comments/CommentComponent';
 import axios from 'axios';
 import { API_ENDPOINTS } from '../../utils/apiConfig';
 
 const PostDetailScreen = ({ route, navigation }) => {
   const { postId, commentId, highlightCommentId } = route.params || {};
-  const { token } = useSelector(state => state.auth);
+  const { token, user: currentUser } = useSelector(state => state.auth);
   
   const [post, setPost] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -156,6 +157,8 @@ const PostDetailScreen = ({ route, navigation }) => {
   };
 
   const handleLike = async () => {
+    const prevLiked = liked;
+    const prevLikesCount = likesCount;
     try {
       if (!token) {
         Alert.alert('Error', 'Authentication required');
@@ -168,8 +171,8 @@ const PostDetailScreen = ({ route, navigation }) => {
         'Accept': 'application/json',
       };
 
-      const newLikedState = !liked;
-      const newLikesCount = liked ? likesCount - 1 : likesCount + 1;
+      const newLikedState = !prevLiked;
+      const newLikesCount = prevLiked ? prevLikesCount - 1 : prevLikesCount + 1;
 
       // Optimistic update
       setLiked(newLikedState);
@@ -178,7 +181,7 @@ const PostDetailScreen = ({ route, navigation }) => {
       // Use the same endpoint pattern as FeedScreen
       const likeEndpoint = `http://192.168.43.36:8080/api/posts/${postId}/like`;
 
-      if (!liked) {
+      if (!prevLiked) {
         // Like the post
         await axios.post(likeEndpoint, {}, { headers });
       } else {
@@ -191,11 +194,13 @@ const PostDetailScreen = ({ route, navigation }) => {
         }
       }
 
+      // After successful like/unlike, re-fetch post details for real-time sync
+      fetchPostDetails();
+
     } catch (error) {
-      // Revert on error
-      setLiked(!liked);
-      setLikesCount(liked ? likesCount + 1 : likesCount - 1);
-      
+      // Revert on error using previous state
+      setLiked(prevLiked);
+      setLikesCount(prevLikesCount);
       if (error.response?.status === 401) {
         Alert.alert('Error', 'Authentication required');
       } else {
@@ -206,53 +211,17 @@ const PostDetailScreen = ({ route, navigation }) => {
 
   const renderComment = (comment, index) => {
     const isHighlighted = comment.id?.toString() === highlightCommentId?.toString();
-    
     return (
-      <View 
-        key={comment.id || index} 
-        style={[
-          styles.commentContainer,
-          isHighlighted && styles.highlightedComment
-        ]}
-      >
-        <View style={styles.commentHeader}>
-          <View style={styles.commentAvatarContainer}>
-            <Image 
-              source={{ 
-                uri: `https://ui-avatars.com/api/?name=${encodeURIComponent(comment.user?.username || comment.username || 'User')}&size=40&background=34C759&color=fff&format=png`
-              }}
-              style={styles.commentAvatar}
-              onError={() => {
-                setCommentAvatarErrors(prev => ({
-                  ...prev,
-                  [comment.id]: true
-                }));
-              }}
-              onLoad={() => {
-                setCommentAvatarErrors(prev => ({
-                  ...prev,
-                  [comment.id]: false
-                }));
-              }}
-            />
-            {commentAvatarErrors[comment.id] && (
-              <View style={styles.commentFallbackAvatar}>
-                <Text style={styles.commentFallbackAvatarText}>
-                  {(comment.user?.username || comment.username || 'U').charAt(0).toUpperCase()}
-                </Text>
-              </View>
-            )}
-          </View>
-          <View style={styles.commentUserInfo}>
-            <Text style={styles.commentUsername}>
-              {comment.user?.username || comment.username || 'Unknown User'}
-            </Text>
-            <Text style={styles.commentTime}>
-              {comment.createdAt ? new Date(comment.createdAt).toLocaleDateString() : 'Unknown time'}
-            </Text>
-          </View>
-        </View>
-        <Text style={styles.commentContent}>{comment.content}</Text>
+      <View key={comment.id || index} style={isHighlighted ? styles.highlightedComment : undefined}>
+        <CommentComponent
+          comment={comment}
+          currentUser={currentUser}
+          onCommentUpdate={() => {}}
+          onCommentDelete={() => {}}
+          onUserPress={() => {}}
+          isOwner={comment.userId === currentUser?.id}
+          formatDate={date => new Date(date).toLocaleDateString()}
+        />
       </View>
     );
   };
@@ -261,7 +230,6 @@ const PostDetailScreen = ({ route, navigation }) => {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color="#007AFF" />
-        <Text style={styles.loadingText}>Loading post...</Text>
       </View>
     );
   }
@@ -278,92 +246,82 @@ const PostDetailScreen = ({ route, navigation }) => {
   }
 
   return (
-    <View style={styles.container}>
+    <View style={styles.proContainer}>
       {/* Header */}
-      <View style={styles.header}>
-        <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
-          <Text style={styles.backButtonText}>← Back</Text>
+      <View style={styles.proHeader}>
+        <TouchableOpacity style={styles.proBackButton} onPress={() => navigation.goBack()}>
+          <Ionicons name="arrow-back" size={24} color="#1976D2" />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Post</Text>
+        <Text style={styles.proHeaderTitle}>Post</Text>
         <View style={styles.headerRight} />
       </View>
 
-      <ScrollView 
-        style={styles.content}
+      <ScrollView
+        style={styles.proContent}
+        contentContainerStyle={{ paddingBottom: 32 }}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
         }
       >
-        {/* Post Content */}
-        <View style={styles.postContainer}>
-          {/* Post Header */}
-          <View style={styles.postHeader}>
-            <View style={styles.avatarContainer}>
-              <Image 
-                source={{ 
-                  uri: post.user?.avatar || 
-                       `https://ui-avatars.com/api/?name=${encodeURIComponent(post.user?.username || 'User')}&size=50&background=007AFF&color=fff&format=png`
-                }}
-                style={styles.userAvatar}
-                onError={() => {
-                  setAvatarError(true);
-                }}
-                onLoad={() => {
-                  setAvatarError(false);
-                }}
-              />
-              {avatarError && (
-                <View style={styles.fallbackAvatar}>
-                  <Text style={styles.fallbackAvatarText}>
-                    {(post.user?.username || post.username || 'U').charAt(0).toUpperCase()}
-                  </Text>
-                </View>
-              )}
-            </View>
-            <View style={styles.userInfo}>
-              <Text style={styles.username}>{post.user?.username || post.username || 'Unknown User'}</Text>
-              <Text style={styles.postTime}>
+        {/* Post Card */}
+        <View style={styles.proPostCard}>
+          <View style={styles.proPostHeader}>
+            <Image
+              source={{
+                uri: post.user?.avatar ||
+                  `https://ui-avatars.com/api/?name=${encodeURIComponent(post.user?.username || 'User')}&size=50&background=1976D2&color=fff&format=png`
+              }}
+              style={styles.proUserAvatar}
+              onError={() => setAvatarError(true)}
+              onLoad={() => setAvatarError(false)}
+            />
+            {avatarError && (
+              <View style={styles.proFallbackAvatar}>
+                <Text style={styles.proFallbackAvatarText}>
+                  {(post.user?.username || post.username || 'U').charAt(0).toUpperCase()}
+                </Text>
+              </View>
+            )}
+            <View style={styles.proUserInfo}>
+              <Text style={styles.proUsername}>{post.user?.username || post.username || 'Unknown User'}</Text>
+              <Text style={styles.proPostTime}>
                 {post.createdAt ? new Date(post.createdAt).toLocaleDateString() : 'Unknown time'}
               </Text>
             </View>
           </View>
-
-          {/* Post Content */}
-          <Text style={styles.postContent}>{post.content}</Text>
-
-          {/* Post Image */}
+          <Text style={styles.proPostContent}>{post.content}</Text>
           {post.imageUrl && (
-            <Image source={{ uri: post.imageUrl }} style={styles.postImage} />
+            <Image source={{ uri: post.imageUrl }} style={styles.proPostImage} />
           )}
-
-          {/* Post Actions */}
-          <View style={styles.postActions}>
-            <TouchableOpacity style={styles.actionButton} onPress={handleLike}>
-              <Ionicons 
-                name={liked ? "heart" : "heart-outline"} 
-                size={24} 
-                color={liked ? "#FF3040" : "#8E8E93"} 
+          <View style={styles.proPostActions}>
+            <TouchableOpacity style={styles.proActionButton} onPress={handleLike}>
+              <Ionicons
+                name={liked ? "heart" : "heart-outline"}
+                size={22}
+                color={liked ? "#FF3040" : "#1976D2"}
               />
-              <Text style={[styles.actionText, liked && styles.likedText]}>
-                {likesCount}
-              </Text>
+              <Text style={[styles.proActionText, liked && styles.proLikedText]}>{likesCount}</Text>
             </TouchableOpacity>
-            
-            <TouchableOpacity style={styles.actionButton}>
-              <Ionicons name="chatbubble-outline" size={24} color="#8E8E93" />
-              <Text style={styles.actionText}>{comments.length}</Text>
+            <TouchableOpacity style={styles.proActionButton}>
+              <Ionicons name="chatbubble-outline" size={22} color="#1976D2" />
+              <Text style={styles.proActionText}>{comments.length}</Text>
             </TouchableOpacity>
           </View>
         </View>
 
+        {/* Divider */}
+        <View style={styles.proDivider} />
+
         {/* Comments Section */}
-        <View style={styles.commentsSection}>
-          <Text style={styles.commentsHeader}>Comments ({comments.length})</Text>
-          {comments.length > 0 ? (
-            comments.map(renderComment)
-          ) : (
-            <Text style={styles.noCommentsText}>No comments yet</Text>
-          )}
+        <View style={styles.proCommentsSection}>
+          <Text style={styles.proCommentsHeader}>Comments ({comments.length})</Text>
+          <View style={{ gap: 10 }}>
+            {comments.length > 0 ? (
+              comments.map(renderComment)
+            ) : (
+              <Text style={styles.proNoCommentsText}>No comments yet</Text>
+            )}
+          </View>
         </View>
       </ScrollView>
     </View>
@@ -371,245 +329,167 @@ const PostDetailScreen = ({ route, navigation }) => {
 };
 
 const styles = StyleSheet.create({
-  container: {
+  proContainer: {
     flex: 1,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: '#F7F8FA',
   },
-  header: {
+  proHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 16,
-    paddingVertical: 12,
-    backgroundColor: '#FFFFFF',
+    paddingTop: 32, // reduced from 48
+    paddingBottom: 6, // reduced from 12
+    backgroundColor: '#fff',
     borderBottomWidth: 1,
-    borderBottomColor: '#E5E5EA',
-    paddingTop: 50,
+    borderBottomColor: '#E5EAF2',
+    elevation: 0,
   },
-  backButton: {
-    padding: 8,
-  },
-  headerTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#000000',
-  },
-  headerRight: {
-    width: 40,
-  },
-  backButtonText: {
-    color: '#007AFF',
-    fontSize: 16,
-    fontWeight: '500',
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#FFFFFF',
-  },
-  loadingText: {
-    marginTop: 10,
-    fontSize: 16,
-    color: '#8E8E93',
-  },
-  errorContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#FFFFFF',
-  },
-  errorText: {
-    fontSize: 16,
-    color: '#8E8E93',
-    marginBottom: 20,
-  },
-  retryButton: {
-    backgroundColor: '#007AFF',
-    paddingHorizontal: 20,
-    paddingVertical: 10,
+  proBackButton: {
+    padding: 6,
     borderRadius: 8,
+    backgroundColor: '#F4F8FE',
   },
-  retryButtonText: {
-    color: 'white',
-    fontSize: 16,
-    fontWeight: '500',
+  proHeaderTitle: {
+    fontSize: 17, // reduced from 22
+    fontWeight: '700',
+    color: '#222',
+    letterSpacing: 0.1,
   },
-  content: {
+  proContent: {
     flex: 1,
   },
-  postContainer: {
-    backgroundColor: '#FFFFFF',
-    paddingHorizontal: 16,
-    paddingVertical: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#E5E5EA',
+  proPostCard: {
+    backgroundColor: '#fff',
+    margin: 16,
+    borderRadius: 18,
+    padding: 22,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.07,
+    shadowRadius: 10,
+    elevation: 4,
+    borderWidth: 1,
+    borderColor: '#F0F1F3',
   },
-  postHeader: {
+  proPostHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 12,
+    marginBottom: 18,
   },
-  userAvatar: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
+  proUserAvatar: {
+    width: 54,
+    height: 54,
+    borderRadius: 27,
     backgroundColor: '#E5E5EA',
+    borderWidth: 2,
+    borderColor: '#E5EAF2',
   },
-  avatarContainer: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-    backgroundColor: '#E5E5EA',
-    justifyContent: 'center',
-    alignItems: 'center',
-    position: 'relative',
-  },
-  fallbackAvatar: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-    backgroundColor: '#007AFF',
+  proFallbackAvatar: {
+    width: 54,
+    height: 54,
+    borderRadius: 27,
+    backgroundColor: '#1976D2',
     justifyContent: 'center',
     alignItems: 'center',
     position: 'absolute',
     top: 0,
     left: 0,
   },
-  fallbackAvatarText: {
+  proFallbackAvatarText: {
     color: 'white',
-    fontSize: 18,
+    fontSize: 20,
     fontWeight: 'bold',
   },
-  userInfo: {
-    marginLeft: 12,
+  proUserInfo: {
+    marginLeft: 14,
     flex: 1,
   },
-  username: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#000000',
+  proUsername: {
+    fontSize: 17,
+    fontWeight: '700',
+    color: '#222',
   },
-  postTime: {
+  proPostTime: {
     fontSize: 14,
     color: '#8E8E93',
     marginTop: 2,
   },
-  postContent: {
-    fontSize: 16,
-    color: '#000000',
-    lineHeight: 24,
-    marginBottom: 12,
+  proPostContent: {
+    fontSize: 17,
+    color: '#222',
+    lineHeight: 26,
+    marginBottom: 16,
+    fontWeight: '400',
+    letterSpacing: 0.1,
   },
-  postImage: {
+  proPostImage: {
     width: '100%',
-    height: 300,
-    borderRadius: 8,
+    height: 220,
+    borderRadius: 14,
     backgroundColor: '#F2F2F7',
-    marginBottom: 12,
+    marginBottom: 18,
+    marginTop: 8,
+    resizeMode: 'cover',
   },
-  postActions: {
+  proPostActions: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingTop: 8,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: '#F0F1F3',
+    marginTop: 8,
   },
-  actionButton: {
+  proActionButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginRight: 20,
+    marginRight: 28,
+    paddingVertical: 7,
+    paddingHorizontal: 14,
+    borderRadius: 8,
+    backgroundColor: '#F4F8FE',
   },
-  actionText: {
-    marginLeft: 6,
-    fontSize: 14,
-    color: '#8E8E93',
+  proActionText: {
+    marginLeft: 7,
+    fontSize: 15,
+    color: '#1976D2',
+    fontWeight: '600',
   },
-  likedText: {
+  proLikedText: {
     color: '#FF3040',
   },
-  commentsSection: {
-    backgroundColor: '#FFFFFF',
-    paddingHorizontal: 16,
-    paddingVertical: 16,
+  proDivider: {
+    height: 1,
+    backgroundColor: '#E5EAF2',
+    marginHorizontal: 24,
+    marginVertical: 10,
+    borderRadius: 1,
   },
-  commentsHeader: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#000000',
-    marginBottom: 16,
+  proCommentsSection: {
+    backgroundColor: '#fff',
+    marginHorizontal: 12,
+    marginTop: 8,
+    borderRadius: 14,
+    padding: 18,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 4,
+    elevation: 1,
   },
-  noCommentsText: {
-    fontSize: 14,
+  proCommentsHeader: {
+    fontSize: 19,
+    fontWeight: '700',
+    color: '#1976D2',
+    marginBottom: 14,
+  },
+  proNoCommentsText: {
+    fontSize: 15,
     color: '#8E8E93',
     textAlign: 'center',
-    marginTop: 20,
-  },
-  commentContainer: {
-    backgroundColor: '#FFFFFF',
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F2F2F7',
-  },
-  highlightedComment: {
-    backgroundColor: '#FFF3CD',
-    borderLeftWidth: 3,
-    borderLeftColor: '#007AFF',
-  },
-  commentHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  commentAvatar: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: '#E5E5EA',
-  },
-  commentAvatarContainer: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: '#E5E5EA',
-    justifyContent: 'center',
-    alignItems: 'center',
-    position: 'relative',
-  },
-  commentFallbackAvatar: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: '#34C759',
-    justifyContent: 'center',
-    alignItems: 'center',
-    position: 'absolute',
-    top: 0,
-    left: 0,
-  },
-  commentFallbackAvatarText: {
-    color: 'white',
-    fontSize: 12,
-    fontWeight: 'bold',
-  },
-  commentUserInfo: {
-    marginLeft: 8,
-    flex: 1,
-  },
-  commentUsername: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#000000',
-  },
-  commentTime: {
-    fontSize: 12,
-    color: '#8E8E93',
-    marginTop: 2,
-  },
-  commentContent: {
-    fontSize: 14,
-    color: '#000000',
-    lineHeight: 20,
-    marginLeft: 40,
+    marginTop: 18,
   },
 });
+
 
 export default PostDetailScreen;

@@ -18,6 +18,8 @@ import {
   ScrollView,
   ActionSheetIOS,
 } from 'react-native';
+import MessageItem from '../../components/Chat/MessageItem';
+import ChatInputBar from '../../components/Chat/ChatInputBar';
 import * as Clipboard from 'expo-clipboard';
 import { useDispatch, useSelector } from 'react-redux';
 import { Ionicons, MaterialIcons, Feather } from '@expo/vector-icons';
@@ -77,6 +79,37 @@ const ChatScreen = ({ route, navigation }) => {
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const flatListRef = useRef(null);
   const typingTimeoutRef = useRef(null);
+  // ...existing code...
+  // Media sharing callback
+  const handleSendMediaMessage = async (mediaData) => {
+    try {
+      // Determine messageType and mediaFileId
+      let messageType = 'DOCUMENT';
+      if (mediaData.messageType) {
+        messageType = mediaData.messageType;
+      } else if (mediaData.mimeType) {
+        if (mediaData.mimeType.startsWith('image/')) messageType = 'IMAGE';
+        else if (mediaData.mimeType.startsWith('video/')) messageType = 'VIDEO';
+        else if (mediaData.mimeType.startsWith('audio/')) messageType = 'AUDIO';
+      }
+      const mediaFileId = mediaData.id;
+      const payload = {
+        chatId: chat.id,
+        content: '',
+        messageType,
+        mediaUrl: mediaData.fileUrl || mediaData.file_url || mediaData.url || '',
+        mediaType: mediaData.mimeType || mediaData.fileType || undefined,
+        mediaSize: mediaData.fileSize || undefined,
+        thumbnailUrl: mediaData.thumbnailUrl || undefined,
+      };
+      
+      const result = await dispatch(sendMessage(payload)).unwrap();
+      
+      flatListRef.current?.scrollToEnd({ animated: true });
+    } catch (e) {
+      Alert.alert('Send failed', e.message || 'Could not send media message');
+    }
+  };
 
   // Filter out null/undefined messages to prevent rendering errors
   const rawMessages = messages[chat?.id] || [];
@@ -250,7 +283,7 @@ const ChatScreen = ({ route, navigation }) => {
 
   const handleEmojiSelect = (emoji) => {
     setMessageText(prev => prev + emoji);
-    setShowEmojiPicker(false);
+    // setShowEmojiPicker(false); // Keep picker open for multiple emoji selection
   };
 
   useLayoutEffect(() => {
@@ -314,7 +347,6 @@ const ChatScreen = ({ route, navigation }) => {
       
       // Mark each unread message from others as read
       unreadMessagesFromOthers.forEach(message => {
-        console.log(`Marking message ${message.id} as read (received from other user)`);
         markAsRead(message.id);
       });
     }
@@ -356,7 +388,7 @@ const ChatScreen = ({ route, navigation }) => {
       setMessageText('');
       
       try {
-        await dispatch(sendMessage({ 
+        const result = await dispatch(sendMessage({ 
           chatId: chat.id, 
           content 
         })).unwrap();
@@ -402,145 +434,15 @@ const ChatScreen = ({ route, navigation }) => {
   };
 
   const renderMessage = ({ item: message }) => {
-    // Null check for message
-    if (!message) {
-      console.warn('renderMessage: Received null/undefined message, skipping render');
-      return null;
-    }
-    
-    // Use the helper function for consistent ownership detection
-    const isMyMessage = isMessageMine(message);
-    
-    const messageTime = new Date(message.createdAt);
-    const timeString = messageTime.toLocaleTimeString([], {
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-
-    // Better sender name logic
-    const getSenderDisplayName = (message) => {
-      // Null check for message
-      if (!message) {
-        return 'Unknown User';
-      }
-      
-      // If it's my message, use my user info
-      if (isMyMessage && user) {
-        return user.displayName || user.username || 'You';
-      }
-      
-      // For other users' messages
-      if (message.senderName) return message.senderName;
-      if (message.senderDisplayName) return message.senderDisplayName;
-      
-      // Try to find sender from chat participants
-      const sender = chat.participants?.find(p => p.user?.id === message.senderId);
-      if (sender?.user) {
-        return sender.user.displayName || 
-               sender.user.username || 
-               'Unknown User';
-      }
-      
-      // If we can't find the sender info but we know the senderId
-      if (message.senderId === user?.id || message.senderId === 'CURRENT_USER_MESSAGE') {
-        return user?.displayName || user?.username || 'You';
-      }
-      
-      return 'Unknown User';
-    };
-
-    const senderDisplayName = getSenderDisplayName(message);
-
     return (
-      <TouchableOpacity
-        onLongPress={() => handleMessageLongPress(message)}
-        activeOpacity={0.7}
-        style={[
-          styles.messageWrapper,
-          isMyMessage ? styles.myMessageWrapper : styles.otherMessageWrapper,
-        ]}
-      >
-        {!isMyMessage && (
-          <View style={styles.avatarContainer}>
-            <Image 
-              source={{ 
-                uri: `https://ui-avatars.com/api/?name=${encodeURIComponent(senderDisplayName)}&background=6C7CE7&color=fff&size=32` 
-              }} 
-              style={styles.avatar}
-            />
-          </View>
-        )}
-        
-        <View style={[
-          styles.messageContainer,
-          isMyMessage ? styles.myMessage : styles.otherMessage,
-        ]}>
-          {!isMyMessage && senderDisplayName && (
-            <Text style={styles.senderName}>{senderDisplayName}</Text>
-          )}
-          
-          {message.isPinned && (
-            <View style={styles.pinnedIndicator}>
-              <Ionicons name="pin" size={12} color="#FF6B6B" />
-              <Text style={styles.pinnedText}>Pinned</Text>
-            </View>
-          )}
-          
-          <Text style={[
-            styles.messageText,
-            isMyMessage ? styles.myMessageText : styles.otherMessageText,
-          ]}>
-            {message.content}
-          </Text>
-          
-          {/* Reactions */}
-          {message.reactions && message.reactions.length > 0 && (
-            <View style={styles.reactionsContainer}>
-              {message.reactions.map((reaction, index) => (
-                <TouchableOpacity
-                  key={index}
-                  style={styles.reactionBubble}
-                  onPress={() => addReaction(message.id, reaction.emoji)}
-                >
-                  <Text style={styles.reactionEmoji}>{reaction.emoji}</Text>
-                  <Text style={styles.reactionCount}>{reaction.count}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          )}
-          
-          <View style={styles.messageFooter}>
-            <Text style={[
-              styles.messageTime,
-              isMyMessage ? styles.myMessageTime : styles.otherMessageTime,
-            ]}>
-              {timeString}
-            </Text>
-            
-            {message.edited && (
-              <Text style={styles.editedLabel}>edited</Text>
-            )}
-            
-            {isMyMessage && (
-              <View style={styles.messageStatusContainer}>
-                {message.isDelivered ? (
-                  <MaterialIcons 
-                    name={message.isRead || message.readByCount > 1 ? 'done-all' : 'done'} 
-                    size={16} 
-                    color={message.isRead || message.readByCount > 1 ? '#4FC3F7' : '#B0BEC5'} 
-                  />
-                ) : (
-                  <MaterialIcons 
-                    name="schedule" 
-                    size={16} 
-                    color="#B0BEC5" 
-                  />
-                )}
-              </View>
-            )}
-          </View>
-        </View>
-      </TouchableOpacity>
+      <MessageItem
+        message={message}
+        user={user}
+        chat={chat}
+        onMessageLongPress={handleMessageLongPress}
+        onReactionPress={addReaction}
+        isMessageMine={isMessageMine(message)}
+      />
     );
   };
 
@@ -828,8 +730,8 @@ const ChatScreen = ({ route, navigation }) => {
 
       <KeyboardAvoidingView 
         style={styles.chatContainer}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 100 : 0}
+  behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+  keyboardVerticalOffset={0}
         enabled={true}
       >
         {/* Messages Background */}
@@ -854,59 +756,18 @@ const ChatScreen = ({ route, navigation }) => {
         </TouchableOpacity>
         
         {/* Input Container */}
-        <View style={styles.inputContainer}>
-          <View style={styles.inputWrapper}>
-            <TouchableOpacity style={styles.attachButton}>
-              <Ionicons name="add" size={24} color="#6C7CE7" />
-            </TouchableOpacity>
-            
-            <TextInput
-              style={styles.textInput}
-              value={messageText}
-              onChangeText={handleTextChange}
-              placeholder="Type a message..."
-              placeholderTextColor="#999"
-              multiline
-              maxLength={1000}
-              blurOnSubmit={false}
-              onFocus={() => {
-                // Scroll to bottom when input is focused
-                setTimeout(() => {
-                  flatListRef.current?.scrollToEnd({ animated: true });
-                }, 300);
-              }}
-              textAlignVertical="center"
-              returnKeyType="send"
-              onSubmitEditing={() => {
-                if (messageText.trim()) {
-                  handleSendMessage();
-                }
-              }}
-            />
-            
-            <TouchableOpacity 
-              style={styles.emojiButton}
-              onPress={() => setShowEmojiPicker(!showEmojiPicker)}
-            >
-              <Ionicons name="happy-outline" size={22} color="#6C7CE7" />
-            </TouchableOpacity>
-          </View>
-          
-          <TouchableOpacity
-            style={[
-              styles.sendButton,
-              (messageText.trim() && !sendingMessage) ? styles.sendButtonActive : styles.sendButtonInactive,
-            ]}
-            onPress={handleSendMessage}
-            disabled={!messageText.trim() || sendingMessage}
-          >
-            <Ionicons 
-              name="send" 
-              size={18} 
-              color="#fff" 
-            />
-          </TouchableOpacity>
-        </View>
+        <ChatInputBar
+          newMessage={messageText}
+          onTextChange={handleTextChange}
+          onSendMessage={handleSendMessage}
+          onMediaUploaded={handleSendMediaMessage}
+          token={token}
+          apiBase={API_ENDPOINTS.BASE}
+          isTyping={sendingMessage}
+          disabled={sendingMessage}
+          showEmojiPicker={showEmojiPicker}
+          onEmojiToggle={() => setShowEmojiPicker(!showEmojiPicker)}
+        />
       </KeyboardAvoidingView>
 
       {/* Message Options Modal (Android) */}
@@ -1129,7 +990,7 @@ const styles = StyleSheet.create({
   
   // Header Styles
   header: {
-    paddingTop: Platform.OS === 'ios' ? 44 : StatusBar.currentHeight || 0,
+  paddingTop: 0,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
@@ -1319,7 +1180,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     paddingHorizontal: 16,
     paddingVertical: 12,
-    paddingBottom: Platform.OS === 'ios' ? 12 : 16,
+  paddingBottom: 0,
     backgroundColor: '#fff',
     alignItems: 'flex-end',
     borderTopWidth: 1,

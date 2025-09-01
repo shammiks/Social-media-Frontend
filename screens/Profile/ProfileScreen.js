@@ -54,6 +54,8 @@ const dispatch = useDispatch();
   const { token, user } = useSelector((state) => state.auth);
   const [posts, setPosts] = useState([]);
   const [savedPosts, setSavedPosts] = useState([]);
+  const [followersCount, setFollowersCount] = useState(0);
+  const [followeesCount, setFolloweesCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
@@ -81,14 +83,25 @@ const dispatch = useDispatch();
   const fetchData = async () => {
     try {
       setLoading(true);
-      const [myPostsRes, savedPostsRes] = await Promise.all([
+      let followeesRes = { data: 0 };
+      const [myPostsRes, savedPostsRes, followersRes] = await Promise.all([
         axios.get(`${BASE_URL}/api/posts/me`, {
           headers: { Authorization: `Bearer ${token}` }
         }),
         axios.get(`${BASE_URL}/api/bookmarks/my-bookmarks`, {
           headers: { Authorization: `Bearer ${token}` }
+        }),
+        axios.get(`${BASE_URL}/api/follow/count/followers/${user.id}`, {
+          headers: { Authorization: `Bearer ${token}` }
         })
       ]);
+      try {
+        followeesRes = await axios.get(`${BASE_URL}/api/follow/count/following/${user.id}`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+      } catch (e) {
+        followeesRes = { data: 0 };
+      }
       
       // Sort posts by createdAt in descending order (newest first) and ensure like status
       const sortedMyPosts = myPostsRes.data
@@ -107,6 +120,8 @@ const dispatch = useDispatch();
       
       setPosts(sortedMyPosts);
       setSavedPosts(sortedSavedPosts);
+      setFollowersCount(followersRes.data || 0);
+      setFolloweesCount(followeesRes.data || 0);
     } catch (err) {
       console.error('Fetch error:', err);
       Alert.alert('Error', 'Failed to load posts');
@@ -400,7 +415,7 @@ const dispatch = useDispatch();
 
   const deleteComment = async (commentId) => {
     try {
-      await axios.delete(`${BASE_URL}/api/comments/comments/${commentId}`, {
+      await axios.delete(`${BASE_URL}/api/comments/${commentId}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       setComments(prev => prev.filter(comment => comment.id !== commentId));
@@ -906,8 +921,13 @@ const dispatch = useDispatch();
               </View>
               <View style={styles.statDivider} />
               <View style={styles.statItem}>
-                <Text style={styles.statNumber}>{savedPosts.length}</Text>
-                <Text style={styles.statLabel}>Saved</Text>
+                <Text style={styles.statNumber}>{followersCount}</Text>
+                <Text style={styles.statLabel}>Followers</Text>
+              </View>
+              <View style={styles.statDivider} />
+              <View style={styles.statItem}>
+                <Text style={styles.statNumber}>{followeesCount}</Text>
+                <Text style={styles.statLabel}>Following</Text>
               </View>
             </View>
           </View>
@@ -1033,9 +1053,7 @@ const dispatch = useDispatch();
                     comment.id === updatedComment.id ? updatedComment : comment
                   ));
                 }}
-                onCommentDelete={(commentId) => {
-                  setComments(prev => prev.filter(comment => comment.id !== commentId));
-                }}
+                onCommentDelete={deleteComment}
                 onUserPress={(comment) => {
                   const commentUserId = comment.userId || comment.user?.id || comment.authorId || comment.commenterId;
                   if (commentUserId !== user?.id && comment.username) {

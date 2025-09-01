@@ -10,7 +10,7 @@ try {
 
 class ChatAPI {
   constructor() {
-    this.baseURL = 'http://192.168.43.36:8080'; // Replace with your actual backend URL
+    this.baseURL = 'http://192.168.43.36:8080';
     this.token = null;
   }
 
@@ -42,8 +42,7 @@ class ChatAPI {
         
         if (currentTime > expirationTime) {
           console.error('Token is expired - user will need to login again');
-          // Don't automatically clear expired tokens, let user decide
-          return this.token; // Return the token anyway, let the server reject it
+          return this.token;
         }
       } catch (error) {
         console.error('Error decoding token:', error);
@@ -58,12 +57,10 @@ class ChatAPI {
     await AsyncStorage.setItem('authToken', token);
   }
 
-  // Method to clear token manually (for explicit logout)
   async clearAuthToken() {
     this.token = null;
     await AsyncStorage.removeItem('authToken');
     
-    // Disconnect WebSocket when token is manually cleared
     if (WebSocketService) {
       WebSocketService.disconnect();
     }
@@ -95,7 +92,6 @@ class ChatAPI {
         console.error('API Request failed - Status:', response.status);
         console.error('API Request failed - Error data:', errorData);
         
-        // Create an error object with status information
         const error = new Error(errorData.error || `HTTP ${response.status}`);
         error.status = response.status;
         error.isAuthError = response.status === 401;
@@ -136,7 +132,7 @@ class ChatAPI {
         body: JSON.stringify({
           participantIds: participantIds,
           chatName: chatName,
-          chatType: chatType, // Only 'PRIVATE' supported
+          chatType: chatType,
           chatImageUrl: chatImageUrl,
           description: description
         }),
@@ -148,7 +144,6 @@ class ChatAPI {
     }
   }
 
-  // User search for creating chats
   async searchUsers(searchTerm = '') {
     try {
       const endpoint = searchTerm 
@@ -160,7 +155,6 @@ class ChatAPI {
     } catch (error) {
       console.error('❌ Failed to search users:', error);
       
-      // Return mock users for testing
       return [
         {
           id: 2,
@@ -220,18 +214,43 @@ class ChatAPI {
     return this.makeRequest(`/api/chats/${chatId}/participants`);
   }
 
-  // Message Operations
-  async sendMessage(chatId, content, messageType = 'TEXT', mediaFileId = null) {
-    return this.makeRequest('/api/messages', {
-      method: 'POST',
-      body: JSON.stringify({
-        chatId,
-        content,
-        messageType,
-        mediaFileId,
-      }),
-    });
+  // CORRECTED MESSAGE OPERATIONS
+  // Replace your existing sendMessage method in ChatAPI.js with this:
+
+async sendMessage(messageData) {
+  let payload;
+  
+  // Check if messageData is already a complete payload object
+  if (typeof messageData === 'object' && messageData.chatId !== undefined) {
+    // New format: messageData is the complete payload object
+    payload = messageData;
+    console.log('ChatAPI: Using new payload format');
+  } else {
+    // Old format: individual parameters (for backward compatibility)
+    const [chatId, content, messageType = 'TEXT', mediaData = null] = arguments;
+    payload = {
+      chatId,
+      content,
+      messageType,
+    };
+    
+    // Add media fields if provided in old format
+    if (mediaData) {
+      payload.mediaUrl = mediaData.mediaUrl || mediaData.fileUrl;
+      payload.mediaType = mediaData.mediaType || mediaData.fileType;
+      payload.mediaSize = mediaData.mediaSize || mediaData.fileSize;
+      payload.thumbnailUrl = mediaData.thumbnailUrl;
+    }
+    console.log('ChatAPI: Using legacy parameter format');
   }
+
+  console.log('ChatAPI: Final payload being sent:', payload);
+  
+  return this.makeRequest('/api/messages', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
 
   async getChatMessages(chatId, page = 0, size = 50) {
     try {
@@ -240,15 +259,14 @@ class ChatAPI {
     } catch (error) {
       console.error('ChatAPI: Error loading messages from backend:', error);
       
-      // Return mock messages while backend issues are being fixed
       return {
         content: [
           {
             id: 1,
             content: "Welcome to the chat! 👋",
             messageType: "TEXT",
-            createdAt: new Date(Date.now() - 1000 * 60 * 60).toISOString(), // 1 hour ago
-            senderId: 2, // Different user
+            createdAt: new Date(Date.now() - 1000 * 60 * 60).toISOString(),
+            senderId: 2,
             sender: {
               id: 2,
               displayName: "Team Member",
@@ -259,8 +277,8 @@ class ChatAPI {
             id: 2,
             content: "How is everyone doing today?",
             messageType: "TEXT",
-            createdAt: new Date(Date.now() - 1000 * 60 * 30).toISOString(), // 30 minutes ago
-            senderId: 3, // Different user
+            createdAt: new Date(Date.now() - 1000 * 60 * 30).toISOString(),
+            senderId: 3,
             sender: {
               id: 3,
               displayName: "John Doe",
@@ -271,8 +289,8 @@ class ChatAPI {
             id: 3,
             content: "Great! Working on the new features.",
             messageType: "TEXT",
-            createdAt: new Date(Date.now() - 1000 * 60 * 15).toISOString(), // 15 minutes ago
-            senderId: 1, // This should match current user ID for testing
+            createdAt: new Date(Date.now() - 1000 * 60 * 15).toISOString(),
+            senderId: 1,
             sender: {
               id: 1,
               displayName: "You",

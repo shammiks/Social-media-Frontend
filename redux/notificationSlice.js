@@ -71,16 +71,20 @@ export const fetchNotificationCounts = createAsyncThunk(
 
 export const markNotificationAsRead = createAsyncThunk(
   'notifications/markAsRead',
-  async (notificationId, { getState, rejectWithValue }) => {
+  async (notificationId, { getState, rejectWithValue, dispatch }) => {
     try {
       const { auth } = getState();
       const token = auth.token;
 
+      // Make the API call to mark as read
       await axios.post(
         `${API_ENDPOINTS.BASE}/notifications/${notificationId}/read`,
         {},
         { headers: { Authorization: `Bearer ${token}` } }
       );
+      
+      // After successful API call, fetch updated counts
+      dispatch(fetchNotificationCounts());
       
       return notificationId;
     } catch (error) {
@@ -91,7 +95,7 @@ export const markNotificationAsRead = createAsyncThunk(
 
 export const markNotificationAsSeen = createAsyncThunk(
   'notifications/markAsSeen',
-  async (notificationId, { getState, rejectWithValue }) => {
+  async (notificationId, { getState, rejectWithValue, dispatch }) => {
     try {
       const { auth } = getState();
       const token = auth.token;
@@ -102,6 +106,9 @@ export const markNotificationAsSeen = createAsyncThunk(
         { headers: { Authorization: `Bearer ${token}` } }
       );
       
+      // After successful API call, fetch updated counts
+      dispatch(fetchNotificationCounts());
+      
       return notificationId;
     } catch (error) {
       return rejectWithValue(error.response?.data?.message || 'Failed to mark notification as seen');
@@ -111,7 +118,7 @@ export const markNotificationAsSeen = createAsyncThunk(
 
 export const markAllAsRead = createAsyncThunk(
   'notifications/markAllAsRead',
-  async (_, { getState, rejectWithValue }) => {
+  async (_, { getState, rejectWithValue, dispatch }) => {
     try {
       const { auth } = getState();
       const token = auth.token;
@@ -122,6 +129,10 @@ export const markAllAsRead = createAsyncThunk(
         { headers: { Authorization: `Bearer ${token}` } }
       );
       
+      // After successful API call, fetch updated counts and fresh notifications
+      dispatch(fetchNotificationCounts());
+      dispatch(fetchNotifications({ page: 0, size: 20 }));
+      
       return response.data;
     } catch (error) {
       return rejectWithValue(error.response?.data?.message || 'Failed to mark all as read');
@@ -131,7 +142,7 @@ export const markAllAsRead = createAsyncThunk(
 
 export const markAllAsSeen = createAsyncThunk(
   'notifications/markAllAsSeen',
-  async (_, { getState, rejectWithValue }) => {
+  async (_, { getState, rejectWithValue, dispatch }) => {
     try {
       const { auth } = getState();
       const token = auth.token;
@@ -142,6 +153,9 @@ export const markAllAsSeen = createAsyncThunk(
         { headers: { Authorization: `Bearer ${token}` } }
       );
       
+      // After successful API call, fetch updated counts
+      dispatch(fetchNotificationCounts());
+      
       return response.data;
     } catch (error) {
       return rejectWithValue(error.response?.data?.message || 'Failed to mark all as seen');
@@ -151,7 +165,7 @@ export const markAllAsSeen = createAsyncThunk(
 
 export const deleteNotification = createAsyncThunk(
   'notifications/delete',
-  async (notificationId, { getState, rejectWithValue }) => {
+  async (notificationId, { getState, rejectWithValue, dispatch }) => {
     try {
       const { auth } = getState();
       const token = auth.token;
@@ -160,6 +174,9 @@ export const deleteNotification = createAsyncThunk(
         `${API_ENDPOINTS.BASE}/notifications/${notificationId}`,
         { headers: { Authorization: `Bearer ${token}` } }
       );
+      
+      // After successful deletion, fetch updated counts
+      dispatch(fetchNotificationCounts());
       
       return notificationId;
     } catch (error) {
@@ -246,14 +263,14 @@ const notificationSlice = createSlice({
       state.lastUpdated = new Date().toISOString();
     },
     
-    // Update notification counts
+    // Update notification counts from WebSocket or API
     updateNotificationCounts: (state, action) => {
       const { unreadCount, unseenCount } = action.payload;
       state.unreadCount = unreadCount || 0;
       state.unseenCount = unseenCount || 0;
     },
     
-    // Mark notification as read locally
+    // Mark notification as read locally (optimistic update)
     markAsReadLocally: (state, action) => {
       const notificationId = action.payload;
       
@@ -269,7 +286,7 @@ const notificationSlice = createSlice({
       state.unreadNotifications = state.unreadNotifications.filter(n => n.id !== notificationId);
     },
     
-    // Mark notification as seen locally
+    // Mark notification as seen locally (optimistic update)
     markAsSeenLocally: (state, action) => {
       const notificationId = action.payload;
       
@@ -280,7 +297,7 @@ const notificationSlice = createSlice({
       }
     },
     
-    // Mark all as read locally
+    // Mark all as read locally (optimistic update)
     markAllAsReadLocally: (state) => {
       state.notifications.forEach(notification => {
         if (!notification.isRead) {
@@ -292,7 +309,7 @@ const notificationSlice = createSlice({
       state.unreadCount = 0;
     },
     
-    // Mark all as seen locally
+    // Mark all as seen locally (optimistic update)
     markAllAsSeenLocally: (state) => {
       state.notifications.forEach(notification => {
         if (!notification.isSeen) {
@@ -338,9 +355,11 @@ const notificationSlice = createSlice({
         const { notifications, totalPages, totalElements, currentPage, isFirstPage } = action.payload;
         
         if (isFirstPage) {
+          // FIXED: Replace notifications completely with fresh data from backend
           state.notifications = notifications;
           state.refreshing = false;
         } else {
+          // For pagination, append new notifications
           state.notifications = [...state.notifications, ...notifications];
         }
         
@@ -370,42 +389,167 @@ const notificationSlice = createSlice({
         state.unseenCount = action.payload.unseenCount || 0;
       })
       
-    // Mark as read
+    // FIXED: Mark as read - Apply optimistic update immediately
     builder
+      .addCase(markNotificationAsRead.pending, (state, action) => {
+        const notificationId = action.meta.arg;
+        
+        // Apply optimistic update immediately
+        const notification = state.notifications.find(n => n.id === notificationId);
+        if (notification && !notification.isRead) {
+          notification.isRead = true;
+          notification.readAt = new Date().toISOString();
+          state.unreadCount = Math.max(0, state.unreadCount - 1);
+        }
+        
+        // Remove from unread notifications
+        state.unreadNotifications = state.unreadNotifications.filter(n => n.id !== notificationId);
+      })
       .addCase(markNotificationAsRead.fulfilled, (state, action) => {
+        // API call succeeded, optimistic update already applied
+        // Just ensure the state is consistent
         const notificationId = action.payload;
-        notificationSlice.caseReducers.markAsReadLocally(state, { payload: notificationId });
+        const notification = state.notifications.find(n => n.id === notificationId);
+        if (notification) {
+          notification.isRead = true;
+          notification.readAt = new Date().toISOString();
+        }
+      })
+      .addCase(markNotificationAsRead.rejected, (state, action) => {
+        // API call failed, revert optimistic update
+        const notificationId = action.meta.arg;
+        const notification = state.notifications.find(n => n.id === notificationId);
+        if (notification) {
+          notification.isRead = false;
+          notification.readAt = null;
+          state.unreadCount += 1;
+          // Re-add to unread notifications if not already there
+          if (!state.unreadNotifications.find(n => n.id === notificationId)) {
+            state.unreadNotifications.unshift(notification);
+          }
+        }
       })
       
-    // Mark as seen
+    // FIXED: Mark as seen - Apply optimistic update immediately
     builder
+      .addCase(markNotificationAsSeen.pending, (state, action) => {
+        const notificationId = action.meta.arg;
+        
+        // Apply optimistic update immediately
+        const notification = state.notifications.find(n => n.id === notificationId);
+        if (notification && !notification.isSeen) {
+          notification.isSeen = true;
+          state.unseenCount = Math.max(0, state.unseenCount - 1);
+        }
+      })
       .addCase(markNotificationAsSeen.fulfilled, (state, action) => {
+        // API call succeeded, optimistic update already applied
         const notificationId = action.payload;
-        notificationSlice.caseReducers.markAsSeenLocally(state, { payload: notificationId });
+        const notification = state.notifications.find(n => n.id === notificationId);
+        if (notification) {
+          notification.isSeen = true;
+        }
+      })
+      .addCase(markNotificationAsSeen.rejected, (state, action) => {
+        // API call failed, revert optimistic update
+        const notificationId = action.meta.arg;
+        const notification = state.notifications.find(n => n.id === notificationId);
+        if (notification) {
+          notification.isSeen = false;
+          state.unseenCount += 1;
+        }
       })
       
-    // Mark all as read
+    // FIXED: Mark all as read - Apply optimistic update immediately
     builder
+      .addCase(markAllAsRead.pending, (state) => {
+        // Apply optimistic update immediately
+        state.notifications.forEach(notification => {
+          if (!notification.isRead) {
+            notification.isRead = true;
+            notification.readAt = new Date().toISOString();
+          }
+        });
+        state.unreadNotifications = [];
+        state.unreadCount = 0;
+      })
       .addCase(markAllAsRead.fulfilled, (state) => {
-        notificationSlice.caseReducers.markAllAsReadLocally(state);
+        // API call succeeded, optimistic update already applied
+        // Ensure state is consistent
+        state.notifications.forEach(notification => {
+          notification.isRead = true;
+          if (!notification.readAt) {
+            notification.readAt = new Date().toISOString();
+          }
+        });
+        state.unreadNotifications = [];
+        state.unreadCount = 0;
+      })
+      .addCase(markAllAsRead.rejected, (state, action) => {
+        // API call failed - need to refetch to get correct state
+        console.error('Failed to mark all as read:', action.payload);
+        // Don't revert optimistic update here as it's complex
+        // Instead, let the next fetch restore the correct state
       })
       
-    // Mark all as seen
+    // FIXED: Mark all as seen - Apply optimistic update immediately
     builder
+      .addCase(markAllAsSeen.pending, (state) => {
+        // Apply optimistic update immediately
+        state.notifications.forEach(notification => {
+          if (!notification.isSeen) {
+            notification.isSeen = true;
+          }
+        });
+        state.unseenCount = 0;
+      })
       .addCase(markAllAsSeen.fulfilled, (state) => {
-        notificationSlice.caseReducers.markAllAsSeenLocally(state);
+        // API call succeeded, optimistic update already applied
+        state.notifications.forEach(notification => {
+          notification.isSeen = true;
+        });
+        state.unseenCount = 0;
+      })
+      .addCase(markAllAsSeen.rejected, (state, action) => {
+        // API call failed - let next fetch restore correct state
+        console.error('Failed to mark all as seen:', action.payload);
+      })
+      
+    // Delete notification
+    builder
+      .addCase(deleteNotification.pending, (state, action) => {
+        const notificationId = action.meta.arg;
+        
+        // Apply optimistic delete
+        const notificationIndex = state.notifications.findIndex(n => n.id === notificationId);
+        if (notificationIndex !== -1) {
+          const notification = state.notifications[notificationIndex];
+          
+          // Update counts before removing
+          if (!notification.isRead && state.unreadCount > 0) {
+            state.unreadCount -= 1;
+          }
+          if (!notification.isSeen && state.unseenCount > 0) {
+            state.unseenCount -= 1;
+          }
+          
+          // Remove from arrays
+          state.notifications.splice(notificationIndex, 1);
+          state.unreadNotifications = state.unreadNotifications.filter(n => n.id !== notificationId);
+        }
       })
       .addCase(deleteNotification.fulfilled, (state, action) => {
+        // API call succeeded, optimistic update already applied
         const notificationId = action.payload;
+        
+        // Ensure notification is removed (double-check)
         state.notifications = state.notifications.filter(n => n.id !== notificationId);
         state.unreadNotifications = state.unreadNotifications.filter(n => n.id !== notificationId);
-        // Update counts
-        if (state.unreadCount > 0) {
-          state.unreadCount -= 1;
-        }
-        if (state.unseenCount > 0) {
-          state.unseenCount -= 1;
-        }
+      })
+      .addCase(deleteNotification.rejected, (state, action) => {
+        // API call failed - refetch to restore correct state
+        console.error('Failed to delete notification:', action.payload);
+        // Complex to revert optimistic delete, better to refetch
       });
   },
 });

@@ -22,6 +22,7 @@ import {
   markAllAsRead,
   markAllAsSeen,
   deleteNotification,
+  markAsReadLocally, // Add this import
   NOTIFICATION_TYPES,
 } from '../../redux/notificationSlice';
 import NotificationWebSocketService from '../../services/NotificationWebSocketService';
@@ -67,12 +68,15 @@ const NotificationsScreen = ({ navigation }) => {
         // Don't disconnect WebSocket here as it should persist
         // across screen navigations for real-time notifications
       };
-    }, [dispatch, user?.id, token, unseenCount])
+    }, [dispatch, user?.id, token]) // FIXED: Removed unseenCount dependency to prevent infinite loops
   );
 
   // Handle pull-to-refresh
   const onRefresh = useCallback(async () => {
     try {
+      // Set refreshing state
+      dispatch({ type: 'notifications/fetchNotifications/pending', meta: { arg: { page: 0 } } });
+      
       // Fetch fresh notifications and counts
       await Promise.all([
         dispatch(fetchNotifications({ page: 0, size: 20 })).unwrap(),
@@ -92,14 +96,18 @@ const NotificationsScreen = ({ navigation }) => {
     }
   }, [dispatch, hasMore, loadingMore, loading, currentPage]);
 
-  // Handle notification press
+  // FIXED: Handle notification press with better error handling and state management
   const handleNotificationPress = useCallback(async (notification) => {
     try {
-      // Mark as read if not already read
+      // Apply optimistic update immediately for better UX
       if (!notification.isRead) {
-        await dispatch(markNotificationAsRead(notification.id)).unwrap();
-        // Also refresh counts to ensure they're accurate
-        dispatch(fetchNotificationCounts());
+        dispatch(markAsReadLocally(notification.id));
+      }
+
+      // Make the API call to persist the change
+      if (!notification.isRead) {
+        // This will handle the actual API call and update counts
+        dispatch(markNotificationAsRead(notification.id));
       }
 
       // Navigate based on notification type and actionUrl
@@ -120,10 +128,9 @@ const NotificationsScreen = ({ navigation }) => {
         }
       }
     } catch (error) {
-      // If marking as read fails, still allow navigation
-      console.error('Failed to mark notification as read:', error);
+      console.error('Failed to handle notification press:', error);
       
-      // Navigate anyway
+      // Navigate anyway even if marking as read fails
       if (notification.actionUrl) {
         const url = notification.actionUrl;
         
@@ -212,6 +219,11 @@ const NotificationsScreen = ({ navigation }) => {
     }
   }, [dispatch, unreadCount]);
 
+  // FIXED: Add key extractor that includes read status to force re-render
+  const keyExtractor = useCallback((item) => {
+    return `${item.id}-${item.isRead}-${item.isSeen}`;
+  }, []);
+
   // Render notification item
   const renderNotification = useCallback(({ item }) => (
     <NotificationItem
@@ -248,8 +260,8 @@ const NotificationsScreen = ({ navigation }) => {
   if (error && notifications.length === 0) {
     return (
       <View style={styles.container}>
-        <View style={styles.header}>
-          <Text style={styles.headerTitle}>Notifications</Text>
+        <View style={styles.headerCompact}>
+          <Text style={styles.headerTitleLarge}>Notifications</Text>
         </View>
         <View style={styles.errorState}>
           <Ionicons name="alert-circle-outline" size={64} color="#FF3B30" />
@@ -293,7 +305,7 @@ const NotificationsScreen = ({ navigation }) => {
       <FlatList
         data={notifications}
         renderItem={renderNotification}
-        keyExtractor={(item) => item.id.toString()}
+        eyExtractor={keyExtractor}
         refreshControl={
           <RefreshControl
             refreshing={refreshing || loading}

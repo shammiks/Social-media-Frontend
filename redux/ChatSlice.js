@@ -38,18 +38,45 @@ export const loadChatMessages = createAsyncThunk(
   }
 );
 
+// Replace your existing sendMessage thunk with this:
+
 export const sendMessage = createAsyncThunk(
   'chat/sendMessage',
-  async ({ chatId, content, messageType = 'TEXT', mediaFileId = null }, { rejectWithValue }) => {
+  async (messageData, { rejectWithValue, getState }) => {
     try {
-      const message = await ChatAPI.sendMessage(chatId, content, messageType, mediaFileId);
-      return { chatId, message };
+      // Support both old call format and new complete payload format
+      let payload;
+      
+      if (messageData.mediaUrl || messageData.mediaType || messageData.mediaSize || messageData.thumbnailUrl) {
+        // New format: complete payload object for media messages
+        payload = messageData;
+      } else {
+        // Old format: for backward compatibility with text messages
+        const { chatId, content, messageType = 'TEXT', mediaFileId = null } = messageData;
+        payload = { chatId, content, messageType };
+        
+        // Add mediaFileId if provided (for backward compatibility)
+        if (mediaFileId) {
+          payload.mediaFileId = mediaFileId;
+        }
+      }
+      
+      console.log('Redux sendMessage: Dispatching payload:', payload);
+      
+      // Pass the complete payload object to ChatAPI
+      const message = await ChatAPI.sendMessage(payload);
+      
+      // Get current user from state
+      const state = getState();
+      const currentUserId = state.auth.user?.id;
+      
+      return { chatId: payload.chatId, message, currentUserId };
     } catch (error) {
+      console.error('Redux sendMessage failed:', error);
       return rejectWithValue(error.message);
     }
   }
 );
-
 export const createNewChat = createAsyncThunk(
   'chat/createChat',
   async ({ participants, chatName = '' }, { rejectWithValue }) => {
@@ -101,20 +128,15 @@ const chatSlice = createSlice({
       // Check if message already exists (avoid duplicates)
       const exists = state.messages[chatId].some(msg => msg && msg.id === message.id);
       if (!exists) {
-        // Enhance message with proper sender identification if needed
-        const enhancedMessage = {
-          ...message,
-          // Keep original senderId if it exists, otherwise it's from another user
-          senderId: message.senderId || 'OTHER_USER_MESSAGE'
-        };
-        
-        state.messages[chatId].unshift(enhancedMessage);
+        // Keep the message as is - WebSocket messages should have proper sender info
+        // If senderId is missing, it's likely from another user (since WebSocket typically sends others' messages)
+        state.messages[chatId].push(message);
         
         // Update chat's last message
         const chatIndex = state.chats.findIndex(chat => chat.id === chatId);
         if (chatIndex !== -1) {
-          state.chats[chatIndex].lastMessage = enhancedMessage;
-          state.chats[chatIndex].lastMessageAt = enhancedMessage.createdAt;
+          state.chats[chatIndex].lastMessage = message;
+          state.chats[chatIndex].lastMessageAt = message.createdAt;
           
           // Move chat to top of list
           const [updatedChat] = state.chats.splice(chatIndex, 1);
@@ -227,7 +249,7 @@ const chatSlice = createSlice({
       .addCase(sendMessage.fulfilled, (state, action) => {
         state.sendingMessage = false;
         // Message will be added via WebSocket, but add optimistically
-        const { chatId, message } = action.payload;
+        const { chatId, message, currentUserId } = action.payload;
         if (!state.messages[chatId]) {
           state.messages[chatId] = [];
         }
@@ -235,14 +257,13 @@ const chatSlice = createSlice({
         // Add message if not already exists (optimistic update)
         const exists = state.messages[chatId].some(msg => msg.id === message.id);
         if (!exists) {
-          // Ensure the message has senderId for proper identification
-          // This is a workaround for backend not setting senderId properly
+          // Ensure the message has proper senderId for identification
           const enhancedMessage = {
             ...message,
-            // If senderId is missing, we know it's from the current user since they just sent it
-            senderId: message.senderId || 'CURRENT_USER_MESSAGE'
+            // Set the senderId to current user ID since they just sent it
+            senderId: message.senderId || currentUserId
           };
-          state.messages[chatId].unshift(enhancedMessage);
+          state.messages[chatId].push(enhancedMessage);
         }
       })
       .addCase(sendMessage.rejected, (state, action) => {
