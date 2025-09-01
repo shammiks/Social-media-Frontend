@@ -32,6 +32,9 @@ import CommentComponent from '../../components/Comments/CommentComponent';
 
 const { width } = Dimensions.get('window');
 
+// Define BASE_URL exactly like ProfileScreen.js
+const BASE_URL = API_ENDPOINTS.BASE.replace('/api', ''); // Remove /api suffix for direct endpoint calls
+
 // Helper function to safely format dates
 const formatDate = (dateString) => {
   try {
@@ -467,7 +470,8 @@ const checkFollowStatus = async (targetUserId, headers) => {
       isLikedByCurrentUser: post.likedByCurrentUser || post.isLikedByCurrentUser || post.isLiked || post.liked || false
     }));
 
-    setPosts(postsWithBookmarks);
+  console.log('UserProfileScreen fetched posts:', postsWithBookmarks);
+  setPosts(postsWithBookmarks);
 
     // Handle follow status for other users
     if (currentUserId && currentUserId !== profileData.id) {
@@ -862,6 +866,7 @@ const renderFollowButton = () => {
     fetchProfileData(true); // Pass true to indicate this is a refresh
   };
 
+
   useEffect(() => {
     if (!userId && !username) {
       Alert.alert('Error', 'User information is missing');
@@ -878,123 +883,132 @@ const renderFollowButton = () => {
     fetchProfileData();
   }, [userId, username, token]);
 
+  // Listen for navigation param to trigger refresh after post creation
+  useEffect(() => {
+    const unsubscribe = navigation.addListener('focus', () => {
+      if (navigation?.getState) {
+        const routes = navigation.getState().routes;
+        const currentRoute = routes[routes.length - 1];
+        if (currentRoute?.params?.refresh) {
+          fetchProfileData();
+          navigation.setParams({ refresh: false });
+        }
+      }
+    });
+    return unsubscribe;
+  }, [navigation]);
+
   // Render post (unchanged)
-  const renderPost = ({ item, index }) => (
-    <Animatable.View animation="slideInUp" delay={index * 150} style={styles.card}>
-      <View style={styles.userRow}>
-        <Image 
-          source={{ 
-            uri: (() => {
-              // In UserProfileScreen, all posts belong to the profile being viewed
-              // So use the profile data for avatar, not the individual post user data
-              if (profile?.imageUrl || profile?.avatar || profile?.profilePicture) {
-                return profile.imageUrl || profile.avatar || profile.profilePicture;
-              }
-              // If it's the current user's profile, use their avatar from Redux
-              if (currentUserId === (userId || profile?.id) && (currentUser?.avatar || currentUser?.profilePicture)) {
-                return currentUser.avatar || currentUser.profilePicture;
-              }
-              // Fallback to post user data
-              return item.user?.avatar || item.user?.profilePicture || item.avatar || item.profilePicture
-                ? (item.user?.avatar || item.user?.profilePicture || item.avatar || item.profilePicture)
-                : `https://ui-avatars.com/api/?name=${encodeURIComponent(item.username || profile?.username || 'User')}&background=6C7CE7&color=fff&size=40`;
-            })()
-          }} 
-          style={styles.avatar} 
-        />
-        <View style={styles.userInfo}>
-          <Text style={styles.username}>{item.username}</Text>
-          <Text style={styles.postTime}>{formatDate(item.createdAt)}</Text>
-        </View>
-        <TouchableOpacity 
-          onPress={() => handleBookmark(item.id)}
-          style={styles.bookmarkBtn}
-        >
-          <Ionicons 
-            name={item.isBookmarkedByCurrentUser ? "bookmark" : "bookmark-outline"} 
-            size={20} 
-            color={item.isBookmarkedByCurrentUser ? "#1e90ff" : "#666"} 
-          />
-        </TouchableOpacity>
-      </View>
 
-      <View style={styles.contentArea}>
-        {item.content && <ReadMoreText text={item.content} />}
-        {item.imageUrl && (
-          <Image source={{ uri: item.imageUrl }} style={styles.postImage} resizeMode="cover" />
-        )}
-        {item.videoUrl && (
-          <Video
-            source={{ uri: item.videoUrl }}
-            rate={1.0}
-            volume={1.0}
-            isMuted={false}
-            resizeMode="cover"
-            useNativeControls
-            style={styles.video}
+  // Move renderPost above the main return and ensure correct scoping
+  function renderPost({ item, index }) {
+    // Debug: log the post object to see all fields
+    console.log('UserProfileScreen post:', item);
+
+    // Match ProfileScreen.js logic for imageUrl
+    const imageUrl = item.imageUrl
+      ? item.imageUrl.startsWith('http') ? item.imageUrl : `${BASE_URL}${item.imageUrl}`
+      : null;
+
+    // Debug: log the final image URL
+    if (imageUrl) {
+      console.log('Final image URL:', imageUrl);
+    }
+
+    const videoUrl = item.videoUrl
+      ? item.videoUrl.startsWith('http') ? item.videoUrl : `${BASE_URL}${item.videoUrl}`
+      : null;
+
+    const pdfUrl = item.pdfUrl
+      ? item.pdfUrl.startsWith('http') ? item.pdfUrl : `${BASE_URL}${item.pdfUrl}`
+      : null;
+
+    return (
+      <Animatable.View animation="slideInUp" delay={index * 150} style={styles.card}>
+        <View style={styles.userRow}>
+          <Image 
+            source={{ 
+              uri: (() => {
+                if (profile?.imageUrl || profile?.avatar || profile?.profilePicture) {
+                  return profile.imageUrl || profile.avatar || profile.profilePicture;
+                }
+                if (currentUserId === (userId || profile?.id) && (currentUser?.avatar || currentUser?.profilePicture)) {
+                  return currentUser.avatar || currentUser.profilePicture;
+                }
+                return item.user?.avatar || item.user?.profilePicture || item.avatar || item.profilePicture
+                  ? (item.user?.avatar || item.user?.profilePicture || item.avatar || item.profilePicture)
+                  : `https://ui-avatars.com/api/?name=${encodeURIComponent(item.username || profile?.username || 'User')}&background=6C7CE7&color=fff&size=40`;
+              })()
+            }} 
+            style={styles.avatar} 
           />
-        )}
-        {item.pdfUrl && (
-          <TouchableOpacity onPress={async () => {
-            const pdfUrl = item.pdfUrl.startsWith('http') ? item.pdfUrl : `http://192.168.43.36:8080${item.pdfUrl}`;
-            
-            try {
-              // Handle spaces and special characters in PDF URLs
-              // First decode any existing encoding, then re-encode properly
-              let cleanUrl = decodeURIComponent(pdfUrl);
-              let finalUrl = encodeURI(cleanUrl);
-              
-              const supported = await Linking.canOpenURL(finalUrl);
-              if (supported) {
-                await Linking.openURL(finalUrl);
-              } else {
-                // Fallback: try the original URL
-                await Linking.openURL(pdfUrl);
-              }
-            } catch (err) {
-              console.error('UserProfileScreen - Failed to open PDF:', err);
-              Alert.alert('Error', 'Unable to open PDF file: ' + err.message);
-            }
-          }}>
-            <View style={styles.pdfContainer}>
-              <MaterialIcons name="picture-as-pdf" size={24} color="#ff4444" />
-              <Text style={styles.pdfText}>View attached PDF</Text>
-            </View>
+          <View style={styles.userInfo}>
+            <Text style={styles.username}>{item.username}</Text>
+            <Text style={styles.postTime}>{formatDate(item.createdAt)}</Text>
+          </View>
+          <TouchableOpacity 
+            onPress={() => handleBookmark(item.id)}
+            style={styles.bookmarkBtn}
+          >
+            <Ionicons 
+              name={item.isBookmarkedByCurrentUser ? "bookmark" : "bookmark-outline"} 
+              size={20} 
+              color={item.isBookmarkedByCurrentUser ? "#1e90ff" : "#666"} 
+            />
           </TouchableOpacity>
-        )}
-      </View>
+        </View>
 
-      <View style={styles.actionsRow}>
-        <TouchableOpacity 
-          style={styles.actionBtn} 
-          onPress={() => handleLike(item.id)}
-        >
-          <Ionicons 
-            name={item.isLikedByCurrentUser ? "heart" : "heart-outline"} 
-            size={20} 
-            color={item.isLikedByCurrentUser ? "#ff3040" : "#444"} 
-          />
-          <Text style={styles.actionText}>{item.likes}</Text>
-        </TouchableOpacity>
-        
-        <TouchableOpacity 
-          style={styles.actionBtn}
-          onPress={() => openComments(item.id)}
-        >
-          <Ionicons name="chatbubble-outline" size={20} color="#444" />
-          <Text style={styles.actionText}>Comment</Text>
-        </TouchableOpacity>
-        
-        <TouchableOpacity 
-          style={styles.actionBtn}
-          onPress={() => handleShare(item)}
-        >
-          <Feather name="share" size={20} color="#444" />
-          <Text style={styles.actionText}>Share</Text>
-        </TouchableOpacity>
-      </View>
-    </Animatable.View>
-  );
+        <View style={styles.contentArea}>
+          {item.content && <ReadMoreText text={item.content} />}
+
+          {imageUrl && (
+            <Image
+              source={{ uri: imageUrl }}
+              style={styles.postImage}
+              resizeMode="cover"
+            />
+          )}
+
+          {videoUrl && (
+            <Video
+              source={{ uri: videoUrl }}
+              rate={1.0}
+              volume={1.0}
+              isMuted={false}
+              resizeMode="cover"
+              useNativeControls
+              style={styles.video}
+            />
+          )}
+
+          {pdfUrl && (
+            <TouchableOpacity onPress={async () => {
+              try {
+                let cleanUrl = decodeURIComponent(pdfUrl);
+                let finalUrl = encodeURI(cleanUrl);
+                const supported = await Linking.canOpenURL(finalUrl);
+                if (supported) {
+                  await Linking.openURL(finalUrl);
+                } else {
+                  await Linking.openURL(pdfUrl);
+                }
+              } catch (err) {
+                console.error('UserProfileScreen - Failed to open PDF:', err);
+                Alert.alert('Error', 'Unable to open PDF file: ' + err.message);
+              }
+            }}>
+              <View style={styles.pdfContainer}>
+                <MaterialIcons name="picture-as-pdf" size={24} color="#ff4444" />
+                <Text style={styles.pdfText}>View attached PDF</Text>
+              </View>
+            </TouchableOpacity>
+          )}
+        </View>
+      </Animatable.View>
+    );
+  }
+
+
 
   if (loading && !refreshing) {
     return (

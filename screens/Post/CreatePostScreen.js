@@ -172,8 +172,8 @@ const CreatePostScreen = () => {
             {
               text: 'OK',
               onPress: () => {
-                // Navigate back to trigger ProfileScreen refresh
-                navigation.goBack();
+                // Navigate back and trigger ProfileScreen/UserProfileScreen refresh
+                navigation.navigate('Profile', { refresh: true });
               }
             }
           ]

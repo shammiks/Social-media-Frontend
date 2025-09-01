@@ -427,6 +427,8 @@ export default function FeedScreen() {
   };
 
   const renderPost = ({ item, index }) => {
+  // Debug: log the post object and avatar fields
+  console.log('FeedScreen post:', item);
     // Construct proper URLs for media files
     const imageUrl = item.imageUrl
       ? item.imageUrl.startsWith('http') ? item.imageUrl : `${SERVER_BASE_URL}${item.imageUrl}`
@@ -470,10 +472,13 @@ export default function FeedScreen() {
             if (item.userId === currentUser?.id && (currentUser?.avatar || currentUser?.profilePicture)) {
               return currentUser.avatar || currentUser.profilePicture;
             }
-            // Otherwise use post user's profile picture or fallback
-            return item.user?.profilePicture || item.profilePicture || item.user?.avatar
-              ? (item.user?.profilePicture || item.profilePicture || item.user?.avatar) 
-              : `https://ui-avatars.com/api/?name=${encodeURIComponent(item.username || 'User')}&background=6C7CE7&color=fff&size=40`;
+            // Try all possible fields for other users
+            if (item.user?.profilePicture) return item.user.profilePicture;
+            if (item.user?.avatar) return item.user.avatar;
+            if (item.profilePicture) return item.profilePicture;
+            if (item.avatar) return item.avatar;
+            // Fallback to generated avatar
+            return `https://ui-avatars.com/api/?name=${encodeURIComponent(item.username || 'User')}&background=6C7CE7&color=fff&size=40`;
           })()
         }} 
         style={styles.avatar} 

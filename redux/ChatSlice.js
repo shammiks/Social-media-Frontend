@@ -121,97 +121,44 @@ const chatSlice = createSlice({
         return;
       }
       
-      console.log('Redux: Adding message via WebSocket:', { chatId, messageId: message.id, content: message.content });
-      
       if (!state.messages[chatId]) {
         state.messages[chatId] = [];
       }
       
       // Check if message already exists (avoid duplicates)
-      // Use both id and content comparison for better duplicate detection
-      const exists = state.messages[chatId].some(msg => 
-        msg && (msg.id === message.id || 
-        (msg.tempId && msg.tempId === message.tempId))
-      );
-      
+      const exists = state.messages[chatId].some(msg => msg && msg.id === message.id);
       if (!exists) {
-        // Add the message with proper structure
-        const newMessage = {
-          ...message,
-          // Ensure required fields are present
-          isDelivered: message.isDelivered !== false,
-          isRead: message.isRead || false,
-          createdAt: message.createdAt || new Date().toISOString()
-        };
-        
-        state.messages[chatId].push(newMessage);
-        console.log('Redux: Message added successfully. Total messages:', state.messages[chatId].length);
+        // Keep the message as is - WebSocket messages should have proper sender info
+        // If senderId is missing, it's likely from another user (since WebSocket typically sends others' messages)
+        state.messages[chatId].push(message);
         
         // Update chat's last message
         const chatIndex = state.chats.findIndex(chat => chat.id === chatId);
         if (chatIndex !== -1) {
-          state.chats[chatIndex].lastMessage = newMessage;
-          state.chats[chatIndex].lastMessageAt = newMessage.createdAt;
+          state.chats[chatIndex].lastMessage = message;
+          state.chats[chatIndex].lastMessageAt = message.createdAt;
           
           // Move chat to top of list
           const [updatedChat] = state.chats.splice(chatIndex, 1);
           state.chats.unshift(updatedChat);
         }
         
-        // Increment unread count if not current chat or if message is from another user
+        // Increment unread count if not current chat
         if (!state.currentChat || state.currentChat.id !== chatId) {
           state.unreadCounts[chatId] = (state.unreadCounts[chatId] || 0) + 1;
-        }
-      } else {
-        console.log('Redux: Message already exists, updating instead');
-        // If message exists, update it with new data (in case of status changes)
-        const existingIndex = state.messages[chatId].findIndex(msg => 
-          msg && (msg.id === message.id || (msg.tempId && msg.tempId === message.tempId))
-        );
-        if (existingIndex !== -1) {
-          state.messages[chatId][existingIndex] = {
-            ...state.messages[chatId][existingIndex],
-            ...message,
-            // Preserve important fields
-            isDelivered: message.isDelivered !== false,
-            createdAt: state.messages[chatId][existingIndex].createdAt || message.createdAt
-          };
         }
       }
     },
     updateMessageViaSocket: (state, action) => {
       const { chatId, messageId, updates } = action.payload;
-      console.log('Redux: Updating message via WebSocket:', { chatId, messageId, updates });
-      
       if (state.messages[chatId]) {
-        const messageIndex = state.messages[chatId].findIndex(msg => 
-          msg && msg.id === messageId
-        );
-        
+        const messageIndex = state.messages[chatId].findIndex(msg => msg.id === messageId);
         if (messageIndex !== -1) {
-          console.log('Redux: Found message to update at index:', messageIndex);
-          // Update the message with new data
-          const updatedMessage = {
+          state.messages[chatId][messageIndex] = {
             ...state.messages[chatId][messageIndex],
             ...updates,
-            // Ensure updatedAt is set for edited messages
-            updatedAt: updates.updatedAt || new Date().toISOString(),
-            isEdited: updates.isEdited !== undefined ? updates.isEdited : true
           };
-          
-          state.messages[chatId][messageIndex] = updatedMessage;
-          console.log('Redux: Message updated successfully');
-          
-          // Update last message in chat list if this was the latest message
-          const chatIndex = state.chats.findIndex(chat => chat.id === chatId);
-          if (chatIndex !== -1 && state.chats[chatIndex].lastMessage?.id === messageId) {
-            state.chats[chatIndex].lastMessage = updatedMessage;
-          }
-        } else {
-          console.warn('Redux: Message not found for update:', messageId);
         }
-      } else {
-        console.warn('Redux: Chat not found for message update:', chatId);
       }
     },
     deleteMessageViaSocket: (state, action) => {
@@ -301,39 +248,22 @@ const chatSlice = createSlice({
       })
       .addCase(sendMessage.fulfilled, (state, action) => {
         state.sendingMessage = false;
-        // Message will be added via WebSocket, but add optimistically with temporary ID
+        // Message will be added via WebSocket, but add optimistically
         const { chatId, message, currentUserId } = action.payload;
         if (!state.messages[chatId]) {
           state.messages[chatId] = [];
         }
         
         // Add message if not already exists (optimistic update)
-        const exists = state.messages[chatId].some(msg => 
-          msg && (msg.id === message.id || msg.tempId === message.tempId)
-        );
-        
+        const exists = state.messages[chatId].some(msg => msg.id === message.id);
         if (!exists) {
-          // Ensure the message has proper senderId and temporary ID for identification
+          // Ensure the message has proper senderId for identification
           const enhancedMessage = {
             ...message,
             // Set the senderId to current user ID since they just sent it
-            senderId: message.senderId || currentUserId,
-            // Add a temporary ID to help with duplicate detection
-            tempId: message.tempId || `temp_${Date.now()}_${Math.random()}`,
-            // Ensure delivery status
-            isDelivered: true,
-            isRead: false,
-            createdAt: message.createdAt || new Date().toISOString()
+            senderId: message.senderId || currentUserId
           };
-          
           state.messages[chatId].push(enhancedMessage);
-          
-          // Update chat's last message
-          const chatIndex = state.chats.findIndex(chat => chat.id === chatId);
-          if (chatIndex !== -1) {
-            state.chats[chatIndex].lastMessage = enhancedMessage;
-            state.chats[chatIndex].lastMessageAt = enhancedMessage.createdAt;
-          }
         }
       })
       .addCase(sendMessage.rejected, (state, action) => {

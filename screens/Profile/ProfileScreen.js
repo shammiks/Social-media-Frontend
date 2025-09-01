@@ -136,9 +136,26 @@ const dispatch = useDispatch();
     fetchData();
   };
 
+
   useEffect(() => {
     fetchData();
   }, []);
+
+  // Listen for navigation param to trigger refresh after post creation
+  useEffect(() => {
+    const unsubscribe = navigation.addListener('focus', () => {
+      if (navigation?.getState) {
+        const routes = navigation.getState().routes;
+        const currentRoute = routes[routes.length - 1];
+        if (currentRoute?.params?.refresh) {
+          fetchData();
+          // Remove the param so it doesn't trigger again
+          navigation.setParams({ refresh: false });
+        }
+      }
+    });
+    return unsubscribe;
+  }, [navigation]);
 
   // Real-time updates when screen comes into focus (e.g., after creating a post)
   useFocusEffect(

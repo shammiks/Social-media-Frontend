@@ -355,47 +355,11 @@ const ChatScreen = ({ route, navigation }) => {
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
     if (chatMessages.length > 0) {
-      // Use requestAnimationFrame for better performance
-      requestAnimationFrame(() => {
-        setTimeout(() => {
-          flatListRef.current?.scrollToEnd({ animated: true });
-        }, 50);
-      });
-    }
-  }, [chatMessages.length, chatMessages]);
-
-  // Force re-render when messages change (helps with real-time updates)
-  useEffect(() => {
-    // This effect triggers whenever chatMessages array changes
-    // It helps ensure the FlatList updates immediately for real-time messages
-    if (chatMessages.length > 0) {
-      // Force FlatList to re-render by triggering a state update
       setTimeout(() => {
-        if (flatListRef.current) {
-          // Scroll to end to show new messages
-          flatListRef.current.scrollToEnd({ animated: true });
-        }
+        flatListRef.current?.scrollToEnd({ animated: true });
       }, 100);
     }
-  }, [chatMessages, chatMessages.length]);
-
-  // Watch for WebSocket message updates
-  useEffect(() => {
-    // This effect helps ensure real-time updates are immediately visible
-    const messageIds = chatMessages.map(msg => msg.id).join(',');
-    const messageContents = chatMessages.map(msg => msg.content || '').join('|');
-    // The dependencies will change when messages are added/updated via WebSocket
-  }, [chatMessages.map(msg => `${msg.id}_${msg.content}_${msg.isEdited || false}_${msg.updatedAt || ''}`).join(',')]);
-
-  // Add a ref to track if we should auto-scroll
-  const shouldAutoScroll = useRef(true);
-
-  // Monitor scroll position to determine if we should auto-scroll for new messages
-  const handleScroll = (event) => {
-    const { layoutMeasurement, contentOffset, contentSize } = event.nativeEvent;
-    const isAtBottom = layoutMeasurement.height + contentOffset.y >= contentSize.height - 20;
-    shouldAutoScroll.current = isAtBottom;
-  };
+  }, [chatMessages.length]);
 
   // Keyboard handling for better input visibility
   useEffect(() => {
@@ -528,30 +492,6 @@ const ChatScreen = ({ route, navigation }) => {
     
     // Final fallback
     return 'Unknown User';
-  };
-
-  // Get chat avatar URL helper function
-  const getChatAvatar = (chat) => {
-    // For private chats, try to get the other participant's profile picture
-    const otherParticipant = chat.participants?.find(p => p.user?.id !== user?.id);
-    const displayName = getChatDisplayName(chat);
-    
-    if (otherParticipant?.user) {
-      const otherUser = otherParticipant.user;
-      // Check for profile picture in multiple possible fields
-      const profilePic = otherUser.avatar || otherUser.profileImageUrl || otherUser.profilePicture;
-      if (profilePic) {
-        return profilePic;
-      }
-    }
-    
-    // Check targetUser if provided (when coming from profile)
-    if (targetUser && targetUser.imageUrl) {
-      return targetUser.imageUrl;
-    }
-    
-    // Fallback to ui-avatars.com with user initials
-    return `https://ui-avatars.com/api/?name=${encodeURIComponent(displayName)}&background=fff&color=6C7CE7&size=40`;
   };
 
   // Handler Functions
@@ -691,11 +631,22 @@ const ChatScreen = ({ route, navigation }) => {
           </TouchableOpacity>
           
           <View style={styles.headerInfo}>
+
             <View style={styles.headerAvatar}>
-              <Image 
-                source={{ 
-                  uri: getChatAvatar(chat)
-                }} 
+              <Image
+                source={(function() {
+                  // Try to get other participant's avatar for private chats
+                  const otherParticipant = chat.participants?.find(p => p.user?.id !== user?.id);
+                  let avatarUrl = null;
+                  if (otherParticipant?.user) {
+                    avatarUrl = otherParticipant.user.avatar || otherParticipant.user.profileImageUrl || otherParticipant.user.profilePicture;
+                  }
+                  if (avatarUrl) {
+                    return { uri: avatarUrl };
+                  }
+                  // Fallback to generated avatar
+                  return { uri: `https://ui-avatars.com/api/?name=${getChatDisplayName(chat)}&background=fff&color=6C7CE7&size=40` };
+                })()}
                 style={styles.headerAvatarImage}
               />
               <View style={styles.onlineIndicator} />
@@ -788,58 +739,46 @@ const ChatScreen = ({ route, navigation }) => {
         </View>
       )}
 
-      <KeyboardAvoidingView
-        style={{ flex: 1 }}
-        behavior="padding"
-  keyboardVerticalOffset={-10}
-        enabled
+      <KeyboardAvoidingView 
+        style={styles.chatContainer}
+  behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+  keyboardVerticalOffset={0}
+        enabled={true}
       >
-        <View style={styles.chatContainer}>
-          {/* Messages Background */}
-          <TouchableOpacity
-            style={styles.messagesBackground}
-            activeOpacity={1}
-            onPress={() => setShowEmojiPicker(false)}
-          >
-            <FlatList
-              ref={flatListRef}
-              data={chatMessages}
-              renderItem={renderMessage}
-              keyExtractor={(item, index) => `${item.id || item.tempId || `temp_${index}`}_${item.createdAt || Date.now()}`}
-              extraData={chatMessages.length} // Force re-render when messages change
-              style={styles.messagesList}
-              contentContainerStyle={styles.messagesContent}
-              showsVerticalScrollIndicator={false}
-              keyboardShouldPersistTaps="handled"
-              onContentSizeChange={() => {
-                if (shouldAutoScroll.current) {
-                  flatListRef.current?.scrollToEnd({ animated: true });
-                }
-              }}
-              onScroll={handleScroll}
-              scrollEventThrottle={16}
-              removeClippedSubviews={false} // Disable for better real-time updates
-              maxToRenderPerBatch={20}
-              updateCellsBatchingPeriod={100}
-              windowSize={10}
-              initialNumToRender={20}
-            />
-            {renderTypingIndicator()}
-          </TouchableOpacity>
-          {/* Input Container */}
-          <ChatInputBar
-            newMessage={messageText}
-            onTextChange={handleTextChange}
-            onSendMessage={handleSendMessage}
-            onMediaUploaded={handleSendMediaMessage}
-            token={token}
-            apiBase={API_ENDPOINTS.BASE}
-            isTyping={sendingMessage}
-            disabled={sendingMessage}
-            showEmojiPicker={showEmojiPicker}
-            onEmojiToggle={() => setShowEmojiPicker(!showEmojiPicker)}
+        {/* Messages Background */}
+        <TouchableOpacity 
+          style={styles.messagesBackground}
+          activeOpacity={1}
+          onPress={() => setShowEmojiPicker(false)}
+        >
+          <FlatList
+            ref={flatListRef}
+            data={chatMessages}
+            renderItem={renderMessage}
+            keyExtractor={(item) => item.id.toString()}
+            style={styles.messagesList}
+            contentContainerStyle={styles.messagesContent}
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+            onContentSizeChange={() => flatListRef.current?.scrollToEnd()}
           />
-        </View>
+          
+          {renderTypingIndicator()}
+        </TouchableOpacity>
+        
+        {/* Input Container */}
+        <ChatInputBar
+          newMessage={messageText}
+          onTextChange={handleTextChange}
+          onSendMessage={handleSendMessage}
+          onMediaUploaded={handleSendMediaMessage}
+          token={token}
+          apiBase={API_ENDPOINTS.BASE}
+          isTyping={sendingMessage}
+          disabled={sendingMessage}
+          showEmojiPicker={showEmojiPicker}
+          onEmojiToggle={() => setShowEmojiPicker(!showEmojiPicker)}
+        />
       </KeyboardAvoidingView>
 
       {/* Message Options Modal (Android) */}

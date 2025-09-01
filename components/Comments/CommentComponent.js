@@ -203,14 +203,16 @@ const CommentComponent = ({
                   const commentUserId = comment.userId || comment.user?.id || comment.authorId || comment.commenterId;
                   const isCurrentUser = commentUserId === currentUser?.id;
                   const currentUserPic = currentUser?.profilePicture || currentUser?.avatar;
-                  
                   if (isCurrentUser && currentUserPic) {
                     return currentUserPic;
                   }
-                  
-                  // Otherwise use comment user data or fallback
-                  return comment.user?.profilePicture || comment.profilePicture || comment.user?.avatar || 
-                         `https://ui-avatars.com/api/?name=${encodeURIComponent(comment.username || 'User')}&background=6C7CE7&color=fff&size=32`;
+                  // Try all possible fields for other users
+                  if (comment.user?.profilePicture) return comment.user.profilePicture;
+                  if (comment.user?.avatar) return comment.user.avatar;
+                  if (comment.profilePicture) return comment.profilePicture;
+                  if (comment.avatar) return comment.avatar;
+                  // Fallback to generated avatar
+                  return `https://ui-avatars.com/api/?name=${encodeURIComponent(comment.username || 'User')}&background=6C7CE7&color=fff&size=32`;
                 })()
               }} 
               style={styles.commentAvatar} 
