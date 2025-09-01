@@ -50,6 +50,9 @@ const formatDate = (dateString) => {
 
 const ProfileScreen = () => {
 const dispatch = useDispatch();
+  useEffect(() => {
+    fetchData();
+  }, []);
   const navigation = useNavigation();
   const { token, user } = useSelector((state) => state.auth);
   const [posts, setPosts] = useState([]);
@@ -80,7 +83,7 @@ const dispatch = useDispatch();
 
   const BASE_URL = API_ENDPOINTS.BASE.replace('/api', ''); // Remove /api suffix for direct endpoint calls
 
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     try {
       setLoading(true);
       let followeesRes = { data: 0 };
@@ -102,7 +105,6 @@ const dispatch = useDispatch();
       } catch (e) {
         followeesRes = { data: 0 };
       }
-      
       // Sort posts by createdAt in descending order (newest first) and ensure like status
       const sortedMyPosts = myPostsRes.data
         .map(post => ({
@@ -110,14 +112,12 @@ const dispatch = useDispatch();
           isLikedByCurrentUser: post.likedByCurrentUser || post.isLikedByCurrentUser || post.isLiked || post.liked || false
         }))
         .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-      
       const sortedSavedPosts = savedPostsRes.data
         .map(post => ({
           ...post,
           isLikedByCurrentUser: post.likedByCurrentUser || post.isLikedByCurrentUser || post.isLiked || post.liked || false
         }))
         .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-      
       setPosts(sortedMyPosts);
       setSavedPosts(sortedSavedPosts);
       setFollowersCount(followersRes.data || 0);
@@ -129,43 +129,119 @@ const dispatch = useDispatch();
       setLoading(false);
       setRefreshing(false);
     }
-  };
+  }, [BASE_URL, token, user]);
+
 
   const onRefresh = () => {
     setRefreshing(true);
     fetchData();
   };
 
-
+  // Listen for real-time bookmark updates via WebSocket
   useEffect(() => {
-    fetchData();
-  }, []);
-
-  // Listen for navigation param to trigger refresh after post creation
-  useEffect(() => {
-    const unsubscribe = navigation.addListener('focus', () => {
-      if (navigation?.getState) {
-        const routes = navigation.getState().routes;
-        const currentRoute = routes[routes.length - 1];
-        if (currentRoute?.params?.refresh) {
+    if (!global.WebSocketService) return;
+    const ws = global.WebSocketService;
+    if (!ws.isConnected) return;
+    // Subscribe to bookmark updates
+    const handler = (message) => {
+      try {
+        const data = typeof message === 'string' ? JSON.parse(message) : message;
+        if (data.type === 'BOOKMARK_UPDATED' && data.postId) {
+          // Refresh both all data and specifically saved posts
           fetchData();
-          // Remove the param so it doesn't trigger again
-          navigation.setParams({ refresh: false });
+          refreshSavedPosts();
         }
-      }
-    });
-    return unsubscribe;
-  }, [navigation]);
+      } catch (e) {}
+    };
+    ws.subscribeToGenericEvents && ws.subscribeToGenericEvents(handler);
+    return () => {
+      ws.unsubscribeFromGenericEvents && ws.unsubscribeFromGenericEvents(handler);
+    };
+  }, [fetchData, refreshSavedPosts]);
 
-  // Real-time updates when screen comes into focus (e.g., after creating a post)
+  // Refresh data when screen comes into focus
   useFocusEffect(
     useCallback(() => {
-      // Only refresh if not already loading to prevent duplicate requests
-      if (!loading && !refreshing) {
-        fetchData();
-      }
-    }, [])
+      fetchData();
+    }, [fetchData])
   );
+
+
+  const handleBookmark = async (postId) => {
+    try {
+      const res = await axios.post(`${BASE_URL}/api/bookmarks/${postId}`, {}, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+
+      const isBookmarked = res.data.bookmarked;
+
+      // Find the post in either posts or savedPosts array
+      const currentPost = posts.find(post => post.id === postId) || 
+                         savedPosts.find(post => post.id === postId);
+
+      // Update posts with bookmark status (if the post exists in My Posts)
+      setPosts(prevPosts =>
+        prevPosts.map(post =>
+          post.id === postId
+            ? { ...post, isBookmarkedByCurrentUser: isBookmarked }
+            : post
+        )
+      );
+
+      // Update saved posts immediately for real-time UI feedback
+      setSavedPosts(prevSaved => {
+        if (isBookmarked) {
+          // Add to saved posts if not already there and we have the post data
+          if (currentPost) {
+            const alreadySaved = prevSaved.find(post => post.id === postId);
+            if (!alreadySaved) {
+              return [...prevSaved, { ...currentPost, isBookmarkedByCurrentUser: true }]
+                .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+            } else {
+              // Update existing saved post
+              return prevSaved.map(post =>
+                post.id === postId
+                  ? { ...post, isBookmarkedByCurrentUser: true }
+                  : post
+              );
+            }
+          }
+          return prevSaved;
+        } else {
+          // Remove from saved posts and update bookmark status
+          return prevSaved
+            .map(post =>
+              post.id === postId
+                ? { ...post, isBookmarkedByCurrentUser: false }
+                : post
+            )
+            .filter(post => post.id !== postId); // Remove the unbookmarked post
+        }
+      });
+
+      // Emit WebSocket event for real-time update
+      if (global.WebSocketService && global.WebSocketService.sendGenericEvent) {
+        global.WebSocketService.sendGenericEvent('BOOKMARK_UPDATED', { postId, isBookmarked });
+      }
+
+      // Immediately refresh saved posts for real-time update
+      if (activeTab === 1) {
+        setTimeout(() => {
+          refreshSavedPosts();
+        }, 100);
+      }
+
+      // Refresh all data to ensure consistency with server
+      setTimeout(() => {
+        fetchData();
+      }, 500);
+      
+    } catch (err) {
+      Alert.alert('Error', 'Failed to update bookmark');
+      // Revert optimistic updates on error
+      fetchData();
+    }
+  };
 
   const pickAndUploadAvatar = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -209,7 +285,9 @@ const dispatch = useDispatch();
       setUploadingAvatar(false);
     }
   };
-
+  // ...existing code...
+  // (all other logic, handlers, and the return JSX)
+// The closing brace for ProfileScreen should be after the return JSX at the end of the component.
   const handleBioUpdate = async () => {
     if (bioLoading) return;
     
@@ -273,11 +351,40 @@ const dispatch = useDispatch();
   const handleTabPress = (tabIndex) => {
     setActiveTab(tabIndex);
     pagerRef.current?.setPage(tabIndex);
+    // Refresh saved posts when switching to saved tab
+    if (tabIndex === 1) {
+      refreshSavedPosts();
+    }
   };
 
   const handlePageSelected = (event) => {
-    setActiveTab(event.nativeEvent.position);
+    const newTab = event.nativeEvent.position;
+    setActiveTab(newTab);
+    // Refresh saved posts when switching to saved tab
+    if (newTab === 1) {
+      refreshSavedPosts();
+    }
   };
+
+  // Function to refresh only saved posts
+  const refreshSavedPosts = useCallback(async () => {
+    try {
+      const savedPostsRes = await axios.get(`${BASE_URL}/api/bookmarks/my-bookmarks`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      
+      const sortedSavedPosts = savedPostsRes.data
+        .map(post => ({
+          ...post,
+          isLikedByCurrentUser: post.likedByCurrentUser || post.isLikedByCurrentUser || post.isLiked || post.liked || false
+        }))
+        .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+      
+      setSavedPosts(sortedSavedPosts);
+    } catch (err) {
+      console.error('Error refreshing saved posts:', err);
+    }
+  }, [BASE_URL, token]);
 
   const handleLike = async (postId) => {
     // Find the current post to determine current like state
@@ -2015,6 +2122,7 @@ const styles = StyleSheet.create({
     minHeight: 120,
     maxHeight: 200,
   },
+
   bioCharacterCount: {
     textAlign: 'right',
     marginTop: 8,
@@ -2023,4 +2131,6 @@ const styles = StyleSheet.create({
   },
 });
 
+
 export default ProfileScreen;
+
