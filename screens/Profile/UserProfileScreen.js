@@ -902,18 +902,10 @@ const renderFollowButton = () => {
 
   // Move renderPost above the main return and ensure correct scoping
   function renderPost({ item, index }) {
-    // Debug: log the post object to see all fields
-    console.log('UserProfileScreen post:', item);
-
     // Match ProfileScreen.js logic for imageUrl
     const imageUrl = item.imageUrl
       ? item.imageUrl.startsWith('http') ? item.imageUrl : `${BASE_URL}${item.imageUrl}`
       : null;
-
-    // Debug: log the final image URL
-    if (imageUrl) {
-      console.log('Final image URL:', imageUrl);
-    }
 
     const videoUrl = item.videoUrl
       ? item.videoUrl.startsWith('http') ? item.videoUrl : `${BASE_URL}${item.videoUrl}`
@@ -925,6 +917,7 @@ const renderFollowButton = () => {
 
     return (
       <Animatable.View animation="slideInUp" delay={index * 150} style={styles.card}>
+        {/* Post Header */}
         <View style={styles.userRow}>
           <Image 
             source={{ 
@@ -958,9 +951,9 @@ const renderFollowButton = () => {
           </TouchableOpacity>
         </View>
 
+        {/* Post Content */}
         <View style={styles.contentArea}>
           {item.content && <ReadMoreText text={item.content} />}
-
           {imageUrl && (
             <Image
               source={{ uri: imageUrl }}
@@ -968,7 +961,6 @@ const renderFollowButton = () => {
               resizeMode="cover"
             />
           )}
-
           {videoUrl && (
             <Video
               source={{ uri: videoUrl }}
@@ -980,7 +972,6 @@ const renderFollowButton = () => {
               style={styles.video}
             />
           )}
-
           {pdfUrl && (
             <TouchableOpacity onPress={async () => {
               try {
@@ -1003,6 +994,35 @@ const renderFollowButton = () => {
               </View>
             </TouchableOpacity>
           )}
+        </View>
+
+        {/* Post Actions */}
+        <View style={styles.actionsRow}>
+          <TouchableOpacity 
+            style={styles.actionBtn} 
+            onPress={() => handleLike(item.id)}
+          >
+            <Ionicons 
+              name={item.isLikedByCurrentUser ? "heart" : "heart-outline"} 
+              size={24} 
+              color={item.isLikedByCurrentUser ? "#ff3040" : "#444"} 
+            />
+            <Text style={styles.actionText}>{item.likes || 0}</Text>
+          </TouchableOpacity>
+          <TouchableOpacity 
+            style={styles.actionBtn}
+            onPress={() => openComments(item.id)}
+          >
+            <Ionicons name="chatbubble-outline" size={24} color="#444" />
+            <Text style={styles.actionText}>Comment</Text>
+          </TouchableOpacity>
+          <TouchableOpacity 
+            style={styles.actionBtn}
+            onPress={() => {/* Implement share functionality */}}
+          >
+            <Feather name="share" size={24} color="#444" />
+            <Text style={styles.actionText}>Share</Text>
+          </TouchableOpacity>
         </View>
       </Animatable.View>
     );

@@ -171,6 +171,23 @@ const chatSlice = createSlice({
       const { chatId, users } = action.payload;
       state.typingUsers[chatId] = users;
     },
+    updateTypingUser: (state, action) => {
+      const { chatId, userId, isTyping } = action.payload;
+      
+      if (!state.typingUsers[chatId]) {
+        state.typingUsers[chatId] = [];
+      }
+      
+      if (isTyping) {
+        // Add user to typing list if not already there
+        if (!state.typingUsers[chatId].includes(userId)) {
+          state.typingUsers[chatId].push(userId);
+        }
+      } else {
+        // Remove user from typing list
+        state.typingUsers[chatId] = state.typingUsers[chatId].filter(id => id !== userId);
+      }
+    },
     updateChat: (state, action) => {
       const updatedChat = action.payload;
       const chatIndex = state.chats.findIndex(chat => chat.id === updatedChat.id);
@@ -287,6 +304,7 @@ export const {
   updateMessageViaSocket,
   deleteMessageViaSocket,
   setTypingUsers,
+  updateTypingUser,
   updateChat,
   removeChat,
   clearError,

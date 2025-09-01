@@ -261,10 +261,11 @@ class WebSocketService {
         const data = JSON.parse(message.body);
         if (this.dispatch && data.type === 'TYPING_INDICATOR') {
           this.dispatch({ 
-            type: 'chat/setTypingUsers', 
+            type: 'chat/updateTypingUser', 
             payload: {
               chatId: data.data.chatId,
-              users: data.data.isTyping ? [data.data.userId] : []
+              userId: data.data.userId,
+              isTyping: data.data.isTyping
             }
           });
         }

@@ -193,8 +193,14 @@ const MessageItem = ({
         )}
 
         {/* Show image if messageType is IMAGE and mediaUrl exists */}
+
+        {/* Show image if messageType is IMAGE and mediaUrl exists */}
         {message.messageType === 'IMAGE' && message.mediaUrl ? (
-          <TouchableOpacity onPress={() => { setModalMediaType('IMAGE'); setShowMediaModal(true); }} activeOpacity={0.85}>
+          <TouchableOpacity 
+            onPress={() => { setModalMediaType('IMAGE'); setShowMediaModal(true); }} 
+            onLongPress={() => onMessageLongPress(message)}
+            activeOpacity={0.85}
+          >
             <Image
               source={{ uri: message.mediaUrl }}
               style={{
@@ -213,7 +219,11 @@ const MessageItem = ({
 
         {/* Show video if messageType is VIDEO and mediaUrl exists */}
         {message.messageType === 'VIDEO' && message.mediaUrl ? (
-          <TouchableOpacity onPress={() => { setModalMediaType('VIDEO'); setShowMediaModal(true); }} activeOpacity={0.85}>
+          <TouchableOpacity 
+            onPress={() => { setModalMediaType('VIDEO'); setShowMediaModal(true); }} 
+            onLongPress={() => onMessageLongPress(message)}
+            activeOpacity={0.85}
+          >
             <Video
               source={{ uri: message.mediaUrl }}
               style={{

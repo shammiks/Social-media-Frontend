@@ -211,8 +211,6 @@ const ChatListScreen = ({ navigation }) => {
           avatarUrl = BASE_URL.replace(/\/$/, '') + (avatarUrl.startsWith('/') ? avatarUrl : '/' + avatarUrl);
         } catch (e) {}
       }
-      // Debug log
-      console.log('[ChatListScreen] Avatar URL for chat', chat.id, ':', avatarUrl);
     }
     if (avatarUrl) {
       return { uri: avatarUrl };

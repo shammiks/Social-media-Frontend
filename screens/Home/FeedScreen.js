@@ -427,8 +427,6 @@ export default function FeedScreen() {
   };
 
   const renderPost = ({ item, index }) => {
-  // Debug: log the post object and avatar fields
-  console.log('FeedScreen post:', item);
     // Construct proper URLs for media files
     const imageUrl = item.imageUrl
       ? item.imageUrl.startsWith('http') ? item.imageUrl : `${SERVER_BASE_URL}${item.imageUrl}`

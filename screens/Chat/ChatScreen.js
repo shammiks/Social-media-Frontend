@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef, useLayoutEffect } from 'react';
+import React, { useEffect, useState, useRef, useLayoutEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -65,6 +65,7 @@ const ChatScreen = ({ route, navigation }) => {
   
   const [messageText, setMessageText] = useState('');
   const [isTyping, setIsTyping] = useState(false);
+  // typingTimeoutRef is already declared above
   const [keyboardHeight, setKeyboardHeight] = useState(0);
   const [selectedMessage, setSelectedMessage] = useState(null);
   const [messageOptionsModal, setMessageOptionsModal] = useState(false);
@@ -115,7 +116,21 @@ const ChatScreen = ({ route, navigation }) => {
   const rawMessages = messages[chat?.id] || [];
   const chatMessages = rawMessages.filter(message => message != null);
   
-  const chatTypingUsers = typingUsers[chat?.id] || [];
+  // Only show typing indicator if another user is typing
+  const chatTypingUsersRaw = typingUsers[chat?.id] || [];
+  const chatTypingUsers = chatTypingUsersRaw.filter(uid => uid && uid !== user?.id);
+
+  // Send typing indicator to backend
+  const sendTypingIndicator = useCallback((typing) => {
+    if (WebSocketService.client && WebSocketService.isConnected) {
+      WebSocketService.client.publish({
+        destination: `/app/chat/${chat.id}/typing`,
+        body: JSON.stringify({ isTyping: typing }),
+      });
+    }
+  }, [chat.id]);
+
+  // Integrate typing indicator logic into the existing handleTextChange
 
   // API Functions
   const { token } = useSelector(state => state.auth);
@@ -327,6 +342,18 @@ const ChatScreen = ({ route, navigation }) => {
       WebSocketService.leaveChat(chat.id);
       WebSocketService.unsubscribeFromChat(chat.id);
       dispatch(setCurrentChat(null));
+      
+      // Clear typing timeout
+      if (typingTimeoutRef.current) {
+        clearTimeout(typingTimeoutRef.current);
+        typingTimeoutRef.current = null;
+      }
+      
+      // Send stop typing indicator
+      if (isTyping) {
+        sendTypingIndicator(false);
+        setIsTyping(false);
+      }
     };
   }, [chat, dispatch]);
 
@@ -646,8 +673,6 @@ const ChatScreen = ({ route, navigation }) => {
                         avatarUrl = BASE_URL.replace(/\/$/, '') + (avatarUrl.startsWith('/') ? avatarUrl : '/' + avatarUrl);
                       } catch (e) {}
                     }
-                    // Debug log
-                    console.log('[ChatScreen Header] Avatar URL for chat', chat.id, ':', avatarUrl);
                   }
                   if (avatarUrl) {
                     return { uri: avatarUrl };
@@ -665,7 +690,8 @@ const ChatScreen = ({ route, navigation }) => {
                 {getChatDisplayName(chat)}
               </Text>
               <Text style={styles.headerSubtitle}>
-                {getUserStatus()}
+                {/* Typing indicator in header */}
+                {chatTypingUsers.length > 0 ? 'typing...' : ''}
               </Text>
             </View>
           </View>
@@ -747,10 +773,10 @@ const ChatScreen = ({ route, navigation }) => {
         </View>
       )}
 
-      <KeyboardAvoidingView 
+      <KeyboardAvoidingView
         style={styles.chatContainer}
-  behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-  keyboardVerticalOffset={0}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'padding'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 80 : 60}
         enabled={true}
       >
         {/* Messages Background */}
@@ -777,7 +803,20 @@ const ChatScreen = ({ route, navigation }) => {
         {/* Input Container */}
         <ChatInputBar
           newMessage={messageText}
-          onTextChange={handleTextChange}
+          onTextChange={(text) => {
+            setMessageText(text);
+            if (!isTyping) {
+              setIsTyping(true);
+              sendTypingIndicator(true);
+            }
+            if (typingTimeoutRef.current) {
+              clearTimeout(typingTimeoutRef.current);
+            }
+            typingTimeoutRef.current = setTimeout(() => {
+              setIsTyping(false);
+              sendTypingIndicator(false);
+            }, 2000);
+          }}
           onSendMessage={handleSendMessage}
           onMediaUploaded={handleSendMediaMessage}
           token={token}
@@ -1066,8 +1105,12 @@ const styles = StyleSheet.create({
     marginBottom: 2,
   },
   headerSubtitle: {
-    fontSize: 13,
-    color: 'rgba(255, 255, 255, 0.8)',
+    fontSize: 16,
+    color: '#fff',
+    fontWeight: 'bold',
+    textShadowColor: 'rgba(0,0,0,0.3)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
   },
   headerActions: {
     flexDirection: 'row',
