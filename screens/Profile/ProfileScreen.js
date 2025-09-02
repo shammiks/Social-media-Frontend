@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
+import Swiper from 'react-native-swiper';
 import {
   View,
   Text,
@@ -829,17 +830,20 @@ const dispatch = useDispatch();
   };
 
   const renderPost = ({ item }) => {
-    const imageUrl = item.imageUrl
-      ? item.imageUrl.startsWith('http') ? item.imageUrl : `${BASE_URL}${item.imageUrl}`
-      : null;
-
-    const videoUrl = item.videoUrl
-      ? item.videoUrl.startsWith('http') ? item.videoUrl : `${BASE_URL}${item.videoUrl}`
-      : null;
-
-    const pdfUrl = item.pdfUrl
-      ? item.pdfUrl.startsWith('http') ? item.pdfUrl : `${BASE_URL}${item.pdfUrl}`
-      : null;
+    // Swiper-based multi-media logic (matches FeedScreen.js)
+    const prependBase = (url) => {
+      if (!url) return null;
+      if (url.startsWith('http')) return url;
+      return `${BASE_URL}${url}`;
+    };
+    const mediaItems = [];
+    if (item.imageUrls && Array.isArray(item.imageUrls) && item.imageUrls.length > 0) {
+      item.imageUrls.forEach(url => mediaItems.push({ type: 'image', url: prependBase(url) }));
+    } else if (item.imageUrl) {
+      mediaItems.push({ type: 'image', url: prependBase(item.imageUrl) });
+    }
+    if (item.videoUrl) mediaItems.push({ type: 'video', url: prependBase(item.videoUrl) });
+    if (item.pdfUrl) mediaItems.push({ type: 'pdf', url: prependBase(item.pdfUrl) });
 
     return (
       <Animated.View entering={FadeInUp} style={styles.card}>
@@ -848,11 +852,9 @@ const dispatch = useDispatch();
           <Image 
             source={{ 
               uri: (() => {
-                // For posts in ProfileScreen, prioritize current user's avatar since these are mostly your posts
                 if (user?.avatar || user?.profilePicture) {
                   return user.avatar || user.profilePicture;
                 }
-                // Fallback to post user data
                 return item.user?.avatar || item.user?.profilePicture || item.avatar || item.profilePicture
                   ? (item.user?.avatar || item.user?.profilePicture || item.avatar || item.profilePicture)
                   : `https://ui-avatars.com/api/?name=${encodeURIComponent(item.username || 'User')}&background=6C7CE7&color=fff&size=40`;
@@ -864,7 +866,6 @@ const dispatch = useDispatch();
             <Text style={styles.postUsername}>{item.username}</Text>
             <Text style={styles.postTime}>{formatDate(item.createdAt)}</Text>
           </View>
-          {/* Options Menu - Only show for current user's posts */}
           {(item.userId === user?.id || item.user?.id === user?.id) && (
             <TouchableOpacity 
               style={styles.optionsButton}
@@ -878,56 +879,103 @@ const dispatch = useDispatch();
         {/* Post Content */}
         <View style={styles.contentArea}>
           {item.content && <Text style={styles.textContent}>{item.content}</Text>}
-          
-          {imageUrl && (
-            <TouchableOpacity onPress={() => openImageModal(imageUrl)}>
-              <Image source={{ uri: imageUrl }} style={styles.postImage} resizeMode="cover" />
-            </TouchableOpacity>
-          )}
-
-          {videoUrl && (
-            <Video
-              source={{ uri: videoUrl }}
-              rate={1.0}
-              volume={1.0}
-              isMuted={false}
-              resizeMode="cover"
-              useNativeControls
-              style={styles.video}
-            />
-          )}
-
-          {pdfUrl && (
-            <TouchableOpacity onPress={async () => {
-              console.log('ProfileScreen - Attempting to open PDF URL:', pdfUrl);
-              
-              try {
-                // Handle spaces and special characters in PDF URLs
-                // First decode any existing encoding, then re-encode properly
-                let cleanUrl = decodeURIComponent(pdfUrl);
-                let finalUrl = encodeURI(cleanUrl);
-                
-                console.log('ProfileScreen - Original URL:', pdfUrl);
-                console.log('ProfileScreen - Cleaned URL:', cleanUrl);
-                console.log('ProfileScreen - Final encoded URL:', finalUrl);
-                
-                const supported = await Linking.canOpenURL(finalUrl);
-                if (supported) {
-                  await Linking.openURL(finalUrl);
-                } else {
-                  // Fallback: try the original URL
-                  await Linking.openURL(pdfUrl);
+          {mediaItems.length > 1 ? (
+            <Swiper
+              style={{ height: 230, marginTop: 10, borderRadius: 20, overflow: 'hidden' }}
+              dotColor="#C4C4C4"
+              activeDotColor="#1976D2"
+              paginationStyle={{ bottom: 2, marginBottom: 0 }}
+              loop={false}
+              showsPagination={true}
+            >
+              {mediaItems.map((media, idx) => {
+                if (media.type === 'image') {
+                  return (
+                    <TouchableOpacity key={idx} onPress={() => openImageModal(media.url)}>
+                      <Image source={{ uri: media.url }} style={styles.postImage} resizeMode="cover" />
+                    </TouchableOpacity>
+                  );
+                } else if (media.type === 'video') {
+                  return (
+                    <Video
+                      key={idx}
+                      source={{ uri: media.url }}
+                      rate={1.0}
+                      volume={1.0}
+                      isMuted={false}
+                      resizeMode="cover"
+                      useNativeControls
+                      style={styles.video}
+                    />
+                  );
+                } else if (media.type === 'pdf') {
+                  return (
+                    <TouchableOpacity key={idx} onPress={async () => {
+                      try {
+                        let cleanUrl = decodeURIComponent(media.url);
+                        let finalUrl = encodeURI(cleanUrl);
+                        const supported = await Linking.canOpenURL(finalUrl);
+                        if (supported) {
+                          await Linking.openURL(finalUrl);
+                        } else {
+                          await Linking.openURL(media.url);
+                        }
+                      } catch (err) {
+                        console.error('Failed to open PDF:', err);
+                        Alert.alert('Error', 'Unable to open PDF file: ' + err.message);
+                      }
+                    }}>
+                      <View style={styles.pdfContainer}>
+                        <MaterialIcons name="picture-as-pdf" size={24} color="#ff4444" />
+                        <Text style={styles.pdfText}>View attached PDF</Text>
+                      </View>
+                    </TouchableOpacity>
+                  );
                 }
-              } catch (err) {
-                console.error('ProfileScreen - Failed to open PDF:', err);
-                Alert.alert('Error', 'Unable to open PDF file: ' + err.message);
-              }
-            }}>
-              <View style={styles.pdfContainer}>
-                <MaterialIcons name="picture-as-pdf" size={24} color="#ff4444" />
-                <Text style={styles.pdfText}>View attached PDF</Text>
-              </View>
-            </TouchableOpacity>
+                return null;
+              })}
+            </Swiper>
+          ) : (
+            <>
+              {mediaItems[0]?.type === 'image' && (
+                <TouchableOpacity onPress={() => openImageModal(mediaItems[0].url)}>
+                  <Image source={{ uri: mediaItems[0].url }} style={styles.postImage} resizeMode="cover" />
+                </TouchableOpacity>
+              )}
+              {mediaItems[0]?.type === 'video' && (
+                <Video
+                  source={{ uri: mediaItems[0].url }}
+                  rate={1.0}
+                  volume={1.0}
+                  isMuted={false}
+                  resizeMode="cover"
+                  useNativeControls
+                  style={styles.video}
+                />
+              )}
+              {mediaItems[0]?.type === 'pdf' && (
+                <TouchableOpacity onPress={async () => {
+                  try {
+                    let cleanUrl = decodeURIComponent(mediaItems[0].url);
+                    let finalUrl = encodeURI(cleanUrl);
+                    const supported = await Linking.canOpenURL(finalUrl);
+                    if (supported) {
+                      await Linking.openURL(finalUrl);
+                    } else {
+                      await Linking.openURL(mediaItems[0].url);
+                    }
+                  } catch (err) {
+                    console.error('Failed to open PDF:', err);
+                    Alert.alert('Error', 'Unable to open PDF file: ' + err.message);
+                  }
+                }}>
+                  <View style={styles.pdfContainer}>
+                    <MaterialIcons name="picture-as-pdf" size={24} color="#ff4444" />
+                    <Text style={styles.pdfText}>View attached PDF</Text>
+                  </View>
+                </TouchableOpacity>
+              )}
+            </>
           )}
         </View>
 
@@ -939,25 +987,23 @@ const dispatch = useDispatch();
           >
             <Ionicons 
               name={item.isLikedByCurrentUser ? "heart" : "heart-outline"} 
-              size={24} 
+              size={20} 
               color={item.isLikedByCurrentUser ? "#ff3040" : "#444"} 
             />
             <Text style={styles.actionText}>{item.likes || 0}</Text>
           </TouchableOpacity>
-          
-         <TouchableOpacity 
+          <TouchableOpacity 
             style={styles.actionBtn}
             onPress={() => openComments(item.id)}
           >
-            <Ionicons name="chatbubble-outline" size={24} color="#444" />
+            <Ionicons name="chatbubble-outline" size={20} color="#444" />
             <Text style={styles.actionText}>Comment</Text>
           </TouchableOpacity>
-          
           <TouchableOpacity 
             style={styles.actionBtn}
             onPress={() => {/* Implement share functionality */}}
           >
-            <Feather name="share" size={24} color="#444" />
+            <Feather name="share" size={20} color="#444" />
             <Text style={styles.actionText}>Share</Text>
           </TouchableOpacity>
         </View>
@@ -1667,15 +1713,15 @@ const styles = StyleSheet.create({
   },
   // Post card styles
   card: {
-    backgroundColor: '#fff',
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 6,
-    elevation: 3,
+  backgroundColor: '#fff',
+  borderRadius: 16,
+  padding: 16,
+  marginBottom: 20,
+  shadowColor: '#000',
+  shadowOffset: { width: 0, height: 2 },
+  shadowOpacity: 0.1,
+  shadowRadius: 6,
+  elevation: 3,
   },
   userRow: {
     flexDirection: 'row',
@@ -1712,10 +1758,10 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   postImage: {
-    width: '100%',
-    height: 200,
-    borderRadius: 12,
-    marginTop: 8,
+  width: '100%',
+  height: 200,
+  borderRadius: 12,
+  marginTop: 8,
   },
   video: {
     width: '100%',
@@ -1737,22 +1783,25 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
   actionsRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    borderTopWidth: 1,
-    borderTopColor: '#eee',
-    paddingTop: 12,
-    marginTop: 12,
+  flexDirection: 'row',
+  justifyContent: 'space-around',
+  borderTopWidth: 1,
+  borderTopColor: '#eee',
+  paddingTop: 2,
+  marginTop: 0,
+  minHeight: 32,
   },
   actionBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 8,
+  flexDirection: 'row',
+  alignItems: 'center',
+  paddingVertical: 4,
+  paddingHorizontal: 6,
+  minHeight: 28,
   },
   actionText: {
-    marginLeft: 8,
-    color: '#444',
-    fontSize: 14,
+  marginLeft: 4,
+  color: '#444',
+  fontSize: 14,
   },
   modalContainer: {
     flex: 1,

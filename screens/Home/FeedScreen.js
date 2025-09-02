@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import Swiper from 'react-native-swiper';
 import {
   View, Text, FlatList, Image, TouchableOpacity,
   StyleSheet, Dimensions, ActivityIndicator, Alert,
@@ -427,121 +428,171 @@ export default function FeedScreen() {
   };
 
   const renderPost = ({ item, index }) => {
-    // Construct proper URLs for media files
-    const imageUrl = item.imageUrl
-      ? item.imageUrl.startsWith('http') ? item.imageUrl : `${SERVER_BASE_URL}${item.imageUrl}`
-      : null;
 
-    const videoUrl = item.videoUrl
-      ? item.videoUrl.startsWith('http') ? item.videoUrl : `${SERVER_BASE_URL}${item.videoUrl}`
-      : null;
-
-    const pdfUrl = item.pdfUrl
-      ? item.pdfUrl.startsWith('http') ? item.pdfUrl : `${SERVER_BASE_URL}${item.pdfUrl}`
-      : null;
+    // Build media items array
+    const prependBase = (url) => {
+      if (!url) return null;
+      if (url.startsWith('http')) return url;
+      return `${SERVER_BASE_URL}${url}`;
+    };
+    const mediaItems = [];
+    if (item.imageUrl) mediaItems.push({ type: 'image', url: prependBase(item.imageUrl) });
+    if (item.videoUrl) mediaItems.push({ type: 'video', url: prependBase(item.videoUrl) });
+    if (item.pdfUrl) mediaItems.push({ type: 'pdf', url: prependBase(item.pdfUrl) });
 
     return (
-    <Animatable.View animation="slideInUp" delay={index * 150} style={styles.card}>
-     <TouchableOpacity 
-  style={styles.userRow}
-  onPress={() => {
-    if (!item.username) {
-      Alert.alert('Error', 'User information is not available');
-      return;
-    }
-    
-    // Check if this is the current user's post
-    if (item.userId === currentUser?.id) {
-      // Navigate to own profile screen (Profile tab)
-      navigation.navigate('Profile');
-    } else {
-      // Navigate to other user's profile screen
-      navigation.navigate('ShowProfile', { 
-        username: item.username,
-        userId: item.userId
-      });
-    }
-  }}
->
-      <Image 
-        source={{ 
-          uri: (() => {
-            // If it's the current user's post, use their profile picture
-            if (item.userId === currentUser?.id && (currentUser?.avatar || currentUser?.profilePicture)) {
-              return currentUser.avatar || currentUser.profilePicture;
+      <Animatable.View animation="slideInUp" delay={index * 150} style={styles.card}>
+        {/* ...user row unchanged... */}
+        <TouchableOpacity 
+          style={styles.userRow}
+          onPress={() => {
+            if (!item.username) {
+              Alert.alert('Error', 'User information is not available');
+              return;
             }
-            // Try all possible fields for other users
-            if (item.user?.profilePicture) return item.user.profilePicture;
-            if (item.user?.avatar) return item.user.avatar;
-            if (item.profilePicture) return item.profilePicture;
-            if (item.avatar) return item.avatar;
-            // Fallback to generated avatar
-            return `https://ui-avatars.com/api/?name=${encodeURIComponent(item.username || 'User')}&background=6C7CE7&color=fff&size=40`;
-          })()
-        }} 
-        style={styles.avatar} 
-      />
-      <View style={styles.userInfo}>
-        <Text style={styles.username}>{item.username}</Text>
-        <Text style={styles.postTime}>{formatDate(item.createdAt)}</Text>
-      </View>
-      <TouchableOpacity 
-        onPress={() => handleBookmark(item.id)}
-        style={styles.bookmarkBtn}
-      >
-        <Ionicons 
-          name={item.isBookmarkedByCurrentUser ? "bookmark" : "bookmark-outline"} 
-          size={20} 
-          color={item.isBookmarkedByCurrentUser ? "#1e90ff" : "#666"} 
-        />
-      </TouchableOpacity>
-    </TouchableOpacity>
-
-      <View style={styles.contentArea}>
-        {item.content && <ReadMoreText text={item.content} />}
-        {imageUrl && (
-          <TouchableOpacity onPress={() => openImageModal(imageUrl)}>
-            <Image source={{ uri: imageUrl }} style={styles.postImage} resizeMode="cover" />
-          </TouchableOpacity>
-        )}
-        {videoUrl && (
-          <Video
-            source={{ uri: videoUrl }}
-            rate={1.0}
-            volume={1.0}
-            isMuted={false}
-            resizeMode="cover"
-            useNativeControls
-            style={styles.video}
+            if (item.userId === currentUser?.id) {
+              navigation.navigate('Profile');
+            } else {
+              navigation.navigate('ShowProfile', { 
+                username: item.username,
+                userId: item.userId
+              });
+            }
+          }}
+        >
+          <Image 
+            source={{ 
+              uri: (() => {
+                if (item.userId === currentUser?.id && (currentUser?.avatar || currentUser?.profilePicture)) {
+                  return currentUser.avatar || currentUser.profilePicture;
+                }
+                if (item.user?.profilePicture) return item.user.profilePicture;
+                if (item.user?.avatar) return item.user.avatar;
+                if (item.profilePicture) return item.profilePicture;
+                if (item.avatar) return item.avatar;
+                return `https://ui-avatars.com/api/?name=${encodeURIComponent(item.username || 'User')}&background=6C7CE7&color=fff&size=40`;
+              })()
+            }} 
+            style={styles.avatar} 
           />
-        )}
-        {pdfUrl && (
-          <TouchableOpacity onPress={async () => {
-            try {
-              // Handle spaces and special characters in PDF URLs
-              // First decode any existing encoding, then re-encode properly
-              let cleanUrl = decodeURIComponent(pdfUrl);
-              let finalUrl = encodeURI(cleanUrl);
-              
-              const supported = await Linking.canOpenURL(finalUrl);
-              if (supported) {
-                await Linking.openURL(finalUrl);
-              } else {
-                // Fallback: try the original URL
-                await Linking.openURL(pdfUrl);
-              }
-            } catch (err) {
-              console.error('Failed to open PDF:', err);
-              Alert.alert('Error', 'Unable to open PDF file: ' + err.message);
-            }
-          }}>
-            <View style={styles.pdfContainer}>
-              <MaterialIcons name="picture-as-pdf" size={24} color="#ff4444" />
-              <Text style={styles.pdfText}>View attached PDF</Text>
-            </View>
+          <View style={styles.userInfo}>
+            <Text style={styles.username}>{item.username}</Text>
+            <Text style={styles.postTime}>{formatDate(item.createdAt)}</Text>
+          </View>
+          <TouchableOpacity 
+            onPress={() => handleBookmark(item.id)}
+            style={styles.bookmarkBtn}
+          >
+            <Ionicons 
+              name={item.isBookmarkedByCurrentUser ? "bookmark" : "bookmark-outline"} 
+              size={20} 
+              color={item.isBookmarkedByCurrentUser ? "#1e90ff" : "#666"} 
+            />
           </TouchableOpacity>
-        )}
-      </View>
+        </TouchableOpacity>
+
+        <View style={styles.contentArea}>
+          {item.content && <ReadMoreText text={item.content} />}
+          {mediaItems.length > 1 ? (
+            <Swiper
+              style={{ height: 230, marginTop: 10, borderRadius: 20, overflow: 'hidden' }}
+              dotColor="#C4C4C4"
+              activeDotColor="#1976D2"
+              paginationStyle={{ bottom: 2, marginBottom: 0 }}
+              loop={false}
+              showsPagination={true}
+            >
+              {mediaItems.map((media, idx) => {
+                if (media.type === 'image') {
+                  return (
+                    <TouchableOpacity key={idx} onPress={() => openImageModal(media.url)}>
+                      <Image source={{ uri: media.url }} style={styles.postImage} resizeMode="cover" />
+                    </TouchableOpacity>
+                  );
+                } else if (media.type === 'video') {
+                  return (
+                    <Video
+                      key={idx}
+                      source={{ uri: media.url }}
+                      rate={1.0}
+                      volume={1.0}
+                      isMuted={false}
+                      resizeMode="cover"
+                      useNativeControls
+                      style={styles.video}
+                    />
+                  );
+                } else if (media.type === 'pdf') {
+                  return (
+                    <TouchableOpacity key={idx} onPress={async () => {
+                      try {
+                        let cleanUrl = decodeURIComponent(media.url);
+                        let finalUrl = encodeURI(cleanUrl);
+                        const supported = await Linking.canOpenURL(finalUrl);
+                        if (supported) {
+                          await Linking.openURL(finalUrl);
+                        } else {
+                          await Linking.openURL(media.url);
+                        }
+                      } catch (err) {
+                        console.error('Failed to open PDF:', err);
+                        Alert.alert('Error', 'Unable to open PDF file: ' + err.message);
+                      }
+                    }}>
+                      <View style={styles.pdfContainer}>
+                        <MaterialIcons name="picture-as-pdf" size={24} color="#ff4444" />
+                        <Text style={styles.pdfText}>View attached PDF</Text>
+                      </View>
+                    </TouchableOpacity>
+                  );
+                }
+                return null;
+              })}
+            </Swiper>
+          ) : (
+            // Single media fallback (original logic)
+            <>
+              {mediaItems[0]?.type === 'image' && (
+                <TouchableOpacity onPress={() => openImageModal(mediaItems[0].url)}>
+                  <Image source={{ uri: mediaItems[0].url }} style={styles.postImage} resizeMode="cover" />
+                </TouchableOpacity>
+              )}
+              {mediaItems[0]?.type === 'video' && (
+                <Video
+                  source={{ uri: mediaItems[0].url }}
+                  rate={1.0}
+                  volume={1.0}
+                  isMuted={false}
+                  resizeMode="cover"
+                  useNativeControls
+                  style={styles.video}
+                />
+              )}
+              {mediaItems[0]?.type === 'pdf' && (
+                <TouchableOpacity onPress={async () => {
+                  try {
+                    let cleanUrl = decodeURIComponent(mediaItems[0].url);
+                    let finalUrl = encodeURI(cleanUrl);
+                    const supported = await Linking.canOpenURL(finalUrl);
+                    if (supported) {
+                      await Linking.openURL(finalUrl);
+                    } else {
+                      await Linking.openURL(mediaItems[0].url);
+                    }
+                  } catch (err) {
+                    console.error('Failed to open PDF:', err);
+                    Alert.alert('Error', 'Unable to open PDF file: ' + err.message);
+                  }
+                }}>
+                  <View style={styles.pdfContainer}>
+                    <MaterialIcons name="picture-as-pdf" size={24} color="#ff4444" />
+                    <Text style={styles.pdfText}>View attached PDF</Text>
+                  </View>
+                </TouchableOpacity>
+              )}
+            </>
+          )}
+        </View>
 
       <View style={styles.actionsRow}>
         <TouchableOpacity 
@@ -640,10 +691,10 @@ export default function FeedScreen() {
           onPress={handleNotificationPress}
         >
           <Ionicons name="notifications-outline" size={24} color="#333" />
-          {/* Add notification badge if needed */}
-          <View style={styles.notificationBadge}>
-            <Text style={styles.badgeText}>3</Text>
-          </View>
+          {/* Dot indicator for unread notifications */}
+          {useSelector(state => state.notifications.unreadCount) > 0 && (
+            <View style={styles.notificationDot} />
+          )}
         </TouchableOpacity>
       </View>
 
@@ -765,7 +816,8 @@ const styles = StyleSheet.create({
     padding: 4,
   },
   contentArea: {
-    marginVertical: 10,
+    marginBottom: 10, // Add spacing between post and the line above like/comment bar
+    marginTop: 6,
   },
   textContent: {
     fontSize: 15,
@@ -807,13 +859,16 @@ const styles = StyleSheet.create({
     justifyContent: 'space-around',
     borderTopWidth: 1,
     borderTopColor: '#eee',
-    paddingTop: 12,
-    marginTop: 8,
+    paddingTop: 2,
+    marginTop: 0,
+    minHeight: 32,
   },
   actionBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 8,
+    paddingVertical: 4,
+    paddingHorizontal: 6,
+    minHeight: 28,
   },
   actionText: {
     marginLeft: 4,
@@ -953,23 +1008,16 @@ const styles = StyleSheet.create({
     position: 'relative',
     padding: 8,
   },
-  notificationBadge: {
+  notificationDot: {
     position: 'absolute',
-    top: 0,
-    right: 0,
+    top: 6,
+    right: 6,
+    width: 10,
+    height: 10,
+    borderRadius: 5,
     backgroundColor: '#ff4757',
-    borderRadius: 10,
-    minWidth: 20,
-    height: 20,
-    justifyContent: 'center',
-    alignItems: 'center',
     borderWidth: 2,
     borderColor: '#fff',
-  },
-  badgeText: {
-    color: '#fff',
-    fontSize: 12,
-    fontWeight: 'bold',
   },
   imageModalContainer: {
     flex: 1,
