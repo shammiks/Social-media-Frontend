@@ -1603,6 +1603,7 @@ const styles = StyleSheet.create({
   paddingVertical: 4,
   paddingHorizontal: 6,
   minHeight: 28,
+  top:5
   },
   actionText: {
   marginLeft: 4,

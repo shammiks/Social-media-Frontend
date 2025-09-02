@@ -782,7 +782,7 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     padding: 16,
     marginBottom: 20,
-    shadowColor: '#000',
+    shadowColor: '#735e5eff',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 6,
@@ -869,6 +869,7 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
     paddingHorizontal: 6,
     minHeight: 28,
+    top:5
   },
   actionText: {
     marginLeft: 4,

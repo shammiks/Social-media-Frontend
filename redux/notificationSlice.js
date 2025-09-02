@@ -355,30 +355,25 @@ const notificationSlice = createSlice({
         const { notifications, totalPages, totalElements, currentPage, isFirstPage } = action.payload;
         
         if (isFirstPage) {
-          // FIXED: Instead of completely replacing, merge with existing optimistic updates
-          const existingNotifications = state.notifications;
-          const updatedNotifications = notifications.map(freshNotification => {
-            // Check if we have an existing notification with optimistic updates
-            const existingNotification = existingNotifications.find(n => n.id === freshNotification.id);
-            
-            if (existingNotification) {
-              // Preserve optimistic updates if they're more recent than the server data
-              return {
-                ...freshNotification,
-                isRead: existingNotification.isRead || freshNotification.isRead,
-                isSeen: existingNotification.isSeen || freshNotification.isSeen,
-                readAt: existingNotification.readAt || freshNotification.readAt
-              };
-            }
-            
-            return freshNotification;
-          });
-          
-          state.notifications = updatedNotifications;
+          // On fresh load or refresh, trust the server data completely
+          // Server data should already have correct read/seen status from database
+          state.notifications = notifications.map(notification => ({
+            ...notification,
+            // Ensure boolean conversion for read/seen status
+            isRead: Boolean(notification.isRead || notification.read),
+            isSeen: Boolean(notification.isSeen || notification.seen),
+            readAt: notification.readAt || notification.read_at
+          }));
           state.refreshing = false;
         } else {
           // For pagination, append new notifications
-          state.notifications = [...state.notifications, ...notifications];
+          const newNotifications = notifications.map(notification => ({
+            ...notification,
+            isRead: Boolean(notification.isRead || notification.read),
+            isSeen: Boolean(notification.isSeen || notification.seen),
+            readAt: notification.readAt || notification.read_at
+          }));
+          state.notifications = [...state.notifications, ...newNotifications];
         }
         
         state.currentPage = currentPage;
@@ -387,6 +382,12 @@ const notificationSlice = createSlice({
         state.hasMore = currentPage < totalPages - 1;
         state.loading = false;
         state.lastUpdated = new Date().toISOString();
+        
+        // Recalculate unread count based on actual notification data
+        if (isFirstPage) {
+          const actualUnreadCount = state.notifications.filter(n => !n.isRead).length;
+          state.unreadCount = actualUnreadCount;
+        }
       })
       .addCase(fetchNotifications.rejected, (state, action) => {
         state.loading = false;
@@ -403,8 +404,12 @@ const notificationSlice = createSlice({
     // Fetch notification counts
     builder
       .addCase(fetchNotificationCounts.fulfilled, (state, action) => {
-        state.unreadCount = action.payload.unreadCount || 0;
-        state.unseenCount = action.payload.unseenCount || 0;
+        const { unreadCount, unseenCount } = action.payload;
+        state.unreadCount = unreadCount || 0;
+        state.unseenCount = unseenCount || 0;
+        
+        // Debug log to verify count synchronization
+        console.log('Updated notification counts:', { unreadCount, unseenCount });
       })
       
     // FIXED: Mark as read - Apply optimistic update immediately
