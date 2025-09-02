@@ -70,6 +70,7 @@ function ReadMoreText({ text, numberOfLines = 3 }) {
 
 
 // Comments Modal Component (unchanged)
+
 function CommentsModal({ visible, onClose, postId, token, currentUserId, currentUser, navigation }) {
   const [comments, setComments] = useState([]);
   const [newComment, setNewComment] = useState('');
@@ -155,29 +156,6 @@ function CommentsModal({ visible, onClose, postId, token, currentUserId, current
   };
 
   useEffect(() => {
-  // Listen for real-time bookmark updates via WebSocket
-  useEffect(() => {
-    if (!global.WebSocketService) return;
-    const ws = global.WebSocketService;
-    if (!ws.isConnected) return;
-    // Subscribe to bookmark updates
-    const handler = (message) => {
-      try {
-        const data = typeof message === 'string' ? JSON.parse(message) : message;
-        if (data.type === 'BOOKMARK_UPDATED' && data.postId) {
-          setPosts(prev => prev.map(post =>
-            post.id === data.postId
-              ? { ...post, isBookmarkedByCurrentUser: data.isBookmarked }
-              : post
-          ));
-        }
-      } catch (e) {}
-    };
-    ws.subscribeToGenericEvents && ws.subscribeToGenericEvents(handler);
-    return () => {
-      ws.unsubscribeFromGenericEvents && ws.unsubscribeFromGenericEvents(handler);
-    };
-  }, []);
     if (visible) {
       fetchComments();
     }

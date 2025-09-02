@@ -1,15 +1,19 @@
 import React, { useState, useEffect } from 'react';
+// ...existing code...
 import {
   View,
   Text,
   StyleSheet,
-  ScrollView,
   ActivityIndicator,
   Alert,
   RefreshControl,
   TouchableOpacity,
-  Image
+  Image,
+  Dimensions,
+  ScrollView
 } from 'react-native';
+import { Video } from 'expo-av';
+import Swiper from 'react-native-swiper';
 import { useSelector } from 'react-redux';
 import { Ionicons } from '@expo/vector-icons';
 import CommentComponent from '../../components/Comments/CommentComponent';
@@ -218,7 +222,14 @@ const PostDetailScreen = ({ route, navigation }) => {
           currentUser={currentUser}
           onCommentUpdate={() => {}}
           onCommentDelete={() => {}}
-          onUserPress={() => {}}
+          onUserPress={(userOrComment) => {
+            // userOrComment can be comment or user object
+            const userId = userOrComment?.userId || userOrComment?.user?.id || userOrComment?.id;
+            const username = userOrComment?.username || userOrComment?.user?.username;
+            if (userId) {
+              navigation.navigate('ShowProfile', { userId, username });
+            }
+          }}
           isOwner={comment.userId === currentUser?.id}
           formatDate={date => new Date(date).toLocaleDateString()}
         />
@@ -245,6 +256,8 @@ const PostDetailScreen = ({ route, navigation }) => {
     );
   }
 
+  // Debug: log the post object to inspect media fields
+  console.log('PostDetailScreen post object:', post);
   return (
     <View style={styles.proContainer}>
       {/* Header */}
@@ -283,16 +296,90 @@ const PostDetailScreen = ({ route, navigation }) => {
               </View>
             )}
             <View style={styles.proUserInfo}>
-              <Text style={styles.proUsername}>{post.user?.username || post.username || 'Unknown User'}</Text>
+              <TouchableOpacity onPress={() => {
+                if (post.user?.id) {
+                  navigation.navigate('ShowProfile', { userId: post.user.id, username: post.user.username });
+                }
+              }}>
+                <Text style={styles.proUsername}>{post.user?.username || post.username || 'Unknown User'}</Text>
+              </TouchableOpacity>
               <Text style={styles.proPostTime}>
                 {post.createdAt ? new Date(post.createdAt).toLocaleDateString() : 'Unknown time'}
               </Text>
             </View>
           </View>
           <Text style={styles.proPostContent}>{post.content}</Text>
-          {post.imageUrl && (
-            <Image source={{ uri: post.imageUrl }} style={styles.proPostImage} />
-          )}
+
+          {/* MEDIA CAROUSEL (image, video, pdf) */}
+          {(() => {
+            const { width } = Dimensions.get('window');
+            const cardRadius = 16;
+            const mediaWidth = width - 16;
+            const mediaHeight = Math.round(mediaWidth * 0.62);
+            const prependBase = (url) => {
+              if (!url) return null;
+              if (url.startsWith('http')) return url;
+              return `http://192.168.43.36:8080${url}`;
+            };
+            // Collect all media into an array for the carousel
+            const mediaItems = [];
+            if (post.imageUrl) mediaItems.push({ type: 'image', url: prependBase(post.imageUrl) });
+            if (post.videoUrl) mediaItems.push({ type: 'video', url: prependBase(post.videoUrl) });
+            if (post.pdfUrl) mediaItems.push({ type: 'pdf', url: prependBase(post.pdfUrl) });
+            if (mediaItems.length === 0) return null;
+            return (
+              <View style={{ marginBottom: 0, marginTop: 0, borderTopLeftRadius: cardRadius, borderTopRightRadius: cardRadius, overflow: 'hidden' }}>
+                <Swiper
+                  style={{ height: mediaHeight }}
+                  dotColor="#C4C4C4"
+                  activeDotColor="#1976D2"
+                  paginationStyle={{ bottom: 10 }}
+                  loop={false}
+                  showsPagination={mediaItems.length > 1}
+                >
+                  {mediaItems.map((item, idx) => {
+                    if (item.type === 'image') {
+                      return (
+                        <Image
+                          key={idx}
+                          source={{ uri: item.url }}
+                          style={{ width: mediaWidth, height: mediaHeight, backgroundColor: '#F2F2F7', borderRadius:20, }}
+                          resizeMode="cover"
+                        />
+                      );
+                    } else if (item.type === 'video') {
+                      return (
+                        <Video
+                          key={idx}
+                          source={{ uri: item.url }}
+                          style={{ width: mediaWidth, height: mediaHeight, backgroundColor: '#000' }}
+                          useNativeControls
+                          resizeMode="cover"
+                          shouldPlay={false}
+                          isLooping={false}
+                        />
+                      );
+                    } else if (item.type === 'pdf') {
+                      return (
+                        <TouchableOpacity
+                          key={idx}
+                          style={{ width: mediaWidth, height: mediaHeight, backgroundColor: '#e3e3e3', justifyContent: 'center', alignItems: 'center' }}
+                          onPress={() => {
+                            if (item.url) {
+                              import('react-native').then(({ Linking }) => Linking.openURL(item.url));
+                            }
+                          }}
+                        >
+                          <Text style={{ color: '#1976D2', fontWeight: 'bold', fontSize: 20 }}>View PDF</Text>
+                        </TouchableOpacity>
+                      );
+                    }
+                    return null;
+                  })}
+                </Swiper>
+              </View>
+            );
+          })()}
           <View style={styles.proPostActions}>
             <TouchableOpacity style={styles.proActionButton} onPress={handleLike}>
               <Ionicons
@@ -331,7 +418,7 @@ const PostDetailScreen = ({ route, navigation }) => {
 const styles = StyleSheet.create({
   proContainer: {
     flex: 1,
-    backgroundColor: '#F7F8FA',
+    backgroundColor: '#F2F2F7',
   },
   proHeader: {
     flexDirection: 'row',
@@ -360,15 +447,17 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   proPostCard: {
-    backgroundColor: '#fff',
-    margin: 16,
-    borderRadius: 18,
-    padding: 22,
+    backgroundColor: 'white',
+    marginHorizontal: 8,
+    marginTop: 12,
+    marginBottom: 8,
+    borderRadius: 16,
+    padding: 12,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.07,
-    shadowRadius: 10,
-    elevation: 4,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 6,
+    elevation: 2,
     borderWidth: 1,
     borderColor: '#F0F1F3',
   },
@@ -423,15 +512,7 @@ const styles = StyleSheet.create({
     fontWeight: '400',
     letterSpacing: 0.1,
   },
-  proPostImage: {
-    width: '100%',
-    height: 220,
-    borderRadius: 14,
-    backgroundColor: '#F2F2F7',
-    marginBottom: 18,
-    marginTop: 8,
-    resizeMode: 'cover',
-  },
+  // proPostImage is now handled inline for more control
   proPostActions: {
     flexDirection: 'row',
     alignItems: 'center',

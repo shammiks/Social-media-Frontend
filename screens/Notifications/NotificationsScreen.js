@@ -58,17 +58,19 @@ const NotificationsScreen = ({ navigation }) => {
         dispatch(fetchNotifications({ page: 0, size: 20 }));
         dispatch(fetchNotificationCounts());
         
-        // Mark all notifications as seen when viewing the screen
-        if (unseenCount > 0) {
-          dispatch(markAllAsSeen());
-        }
+        // Mark all notifications as seen when viewing the screen, but only if there are unseen notifications
+        setTimeout(() => {
+          if (unseenCount > 0) {
+            dispatch(markAllAsSeen());
+          }
+        }, 1000); // Add a small delay to prevent race conditions
       }
 
       return () => {
         // Don't disconnect WebSocket here as it should persist
         // across screen navigations for real-time notifications
       };
-    }, [dispatch, user?.id, token]) // FIXED: Removed unseenCount dependency to prevent infinite loops
+    }, [dispatch, user?.id, token, unseenCount]) // Added unseenCount back but with timeout to prevent loops
   );
 
   // Handle pull-to-refresh

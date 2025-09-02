@@ -355,8 +355,26 @@ const notificationSlice = createSlice({
         const { notifications, totalPages, totalElements, currentPage, isFirstPage } = action.payload;
         
         if (isFirstPage) {
-          // FIXED: Replace notifications completely with fresh data from backend
-          state.notifications = notifications;
+          // FIXED: Instead of completely replacing, merge with existing optimistic updates
+          const existingNotifications = state.notifications;
+          const updatedNotifications = notifications.map(freshNotification => {
+            // Check if we have an existing notification with optimistic updates
+            const existingNotification = existingNotifications.find(n => n.id === freshNotification.id);
+            
+            if (existingNotification) {
+              // Preserve optimistic updates if they're more recent than the server data
+              return {
+                ...freshNotification,
+                isRead: existingNotification.isRead || freshNotification.isRead,
+                isSeen: existingNotification.isSeen || freshNotification.isSeen,
+                readAt: existingNotification.readAt || freshNotification.readAt
+              };
+            }
+            
+            return freshNotification;
+          });
+          
+          state.notifications = updatedNotifications;
           state.refreshing = false;
         } else {
           // For pagination, append new notifications
