@@ -88,6 +88,19 @@ export const createNewChat = createAsyncThunk(
   }
 );
 
+export const markAllAsRead = createAsyncThunk(
+  'chat/markAllAsRead',
+  async (chatId, { dispatch, rejectWithValue }) => {
+    try {
+      await ChatAPI.markAllAsRead(chatId);
+      dispatch(markChatAsRead(chatId));
+      return chatId;
+    } catch (error) {
+      return rejectWithValue(error.message);
+    }
+  }
+);
+
 const initialState = {
   chats: [],
   currentChat: null,
@@ -114,6 +127,7 @@ const chatSlice = createSlice({
     },
     addMessageViaSocket: (state, action) => {
       const { chatId, message } = action.payload;
+      console.log('Redux: addMessageViaSocket called with chatId:', chatId, 'message:', message);
       
       // Null check for message
       if (!message) {
@@ -128,6 +142,7 @@ const chatSlice = createSlice({
       // Check if message already exists (avoid duplicates)
       const exists = state.messages[chatId].some(msg => msg && msg.id === message.id);
       if (!exists) {
+        console.log('Redux: Adding new message via socket to chat:', chatId);
         // Keep the message as is - WebSocket messages should have proper sender info
         // If senderId is missing, it's likely from another user (since WebSocket typically sends others' messages)
         state.messages[chatId].push(message);
@@ -147,6 +162,8 @@ const chatSlice = createSlice({
         if (!state.currentChat || state.currentChat.id !== chatId) {
           state.unreadCounts[chatId] = (state.unreadCounts[chatId] || 0) + 1;
         }
+      } else {
+        console.log('Redux: Message already exists, skipping duplicate');
       }
     },
     updateMessageViaSocket: (state, action) => {
@@ -211,6 +228,57 @@ const chatSlice = createSlice({
     },
     setOnlineUsers: (state, action) => {
       state.onlineUsers = new Set(action.payload);
+    },
+    readStatusUpdated: (state, action) => {
+      const { chatId, messageId, userId } = action.payload;
+      console.log('Redux: readStatusUpdated called for chat:', chatId, 'message:', messageId, 'user:', userId);
+      
+      // Update the specific message's read status
+      if (state.messages[chatId]) {
+        const messageIndex = state.messages[chatId].findIndex(msg => msg.id === messageId);
+        if (messageIndex !== -1) {
+          const message = state.messages[chatId][messageIndex];
+          // Increment readByCount if this user hasn't read it before
+          if (!message.readByUsers || !message.readByUsers.includes(userId)) {
+            console.log('Redux: Updating read status for message:', messageId);
+            state.messages[chatId][messageIndex] = {
+              ...message,
+              readByCount: (message.readByCount || 0) + 1,
+              readByUsers: [...(message.readByUsers || []), userId]
+            };
+          }
+        }
+      }
+    },
+    markChatAsRead: (state, action) => {
+      const chatId = action.payload;
+      
+      // Reset unread count for the chat
+      state.unreadCounts[chatId] = 0;
+      
+      // Update chat's unread count in chats list
+      const chatIndex = state.chats.findIndex(chat => chat.id === chatId);
+      if (chatIndex !== -1) {
+        state.chats[chatIndex] = {
+          ...state.chats[chatIndex],
+          unreadCount: 0
+        };
+      }
+    },
+    chatReadUpdated: (state, action) => {
+      const { chatId, unreadCount } = action.payload;
+      
+      // Update unread count from WebSocket
+      state.unreadCounts[chatId] = unreadCount;
+      
+      // Update chat's unread count in chats list
+      const chatIndex = state.chats.findIndex(chat => chat.id === chatId);
+      if (chatIndex !== -1) {
+        state.chats[chatIndex] = {
+          ...state.chats[chatIndex],
+          unreadCount: unreadCount
+        };
+      }
     },
   },
   extraReducers: (builder) => {
@@ -309,6 +377,9 @@ export const {
   removeChat,
   clearError,
   setOnlineUsers,
+  readStatusUpdated,
+  markChatAsRead,
+  chatReadUpdated,
 } = chatSlice.actions;
 
 export default chatSlice.reducer;

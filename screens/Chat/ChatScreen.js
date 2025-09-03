@@ -23,10 +23,13 @@ import ChatInputBar from '../../components/Chat/ChatInputBar';
 import * as Clipboard from 'expo-clipboard';
 import { useDispatch, useSelector } from 'react-redux';
 import { Ionicons, MaterialIcons, Feather } from '@expo/vector-icons';
+import { useFocusEffect } from '@react-navigation/native';
 import { 
   loadChatMessages, 
   sendMessage, 
-  setCurrentChat 
+  setCurrentChat,
+  markAllAsRead,
+  markChatAsRead
 } from '../../redux/ChatSlice';
 import WebSocketService from '../../services/WebSocketService';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -332,10 +335,24 @@ const ChatScreen = ({ route, navigation }) => {
     dispatch(setCurrentChat(chat));
     dispatch(loadChatMessages({ chatId: chat.id }));
 
-    // Set up WebSocket connection
+    // Set up WebSocket connection - ensure connection is active
     WebSocketService.setDispatch(dispatch);
-    WebSocketService.subscribeToChat(chat.id, dispatch);
-    WebSocketService.joinChat(chat.id);
+    WebSocketService.setCurrentUserId(user?.id); // Set numeric user ID
+    
+    // Make sure WebSocket is connected before subscribing
+    if (!WebSocketService.isConnected) {
+      WebSocketService.connect()
+        .then(() => {
+          WebSocketService.subscribeToChat(chat.id, dispatch);
+          WebSocketService.joinChat(chat.id);
+        })
+        .catch((error) => {
+          console.error('ChatScreen: Failed to connect WebSocket:', error);
+        });
+    } else {
+      WebSocketService.subscribeToChat(chat.id, dispatch);
+      WebSocketService.joinChat(chat.id);
+    }
 
     return () => {
       // Clean up when leaving chat
@@ -355,11 +372,11 @@ const ChatScreen = ({ route, navigation }) => {
         setIsTyping(false);
       }
     };
-  }, [chat, dispatch]);
+  }, [chat, dispatch, user?.id]);
 
   // Mark messages as read when the RECEIVER views them (not when sender sees own messages)
   useEffect(() => {
-    if (chatMessages.length > 0 && user?.id) {
+    if (chatMessages.length > 0 && user?.id && chat?.id) {
       // Only mark messages as read if:
       // 1. I'm NOT the sender (I'm the receiver)
       // 2. The message is not already marked as read
@@ -376,8 +393,47 @@ const ChatScreen = ({ route, navigation }) => {
       unreadMessagesFromOthers.forEach(message => {
         markAsRead(message.id);
       });
+      
+      // If there are any unread messages, mark chat as read in Redux
+      if (unreadMessagesFromOthers.length > 0) {
+        dispatch(markChatAsRead(chat.id));
+      }
     }
-  }, [chatMessages, user?.id]);
+  }, [chatMessages, user?.id, chat?.id, dispatch]);
+
+  // Mark all messages as read when entering the chat
+  useEffect(() => {
+    if (chat?.id && user?.id) {
+      dispatch(markAllAsRead(chat.id));
+    }
+  }, [chat?.id, user?.id, dispatch]);
+
+  // Ensure WebSocket connection when screen is focused
+  useFocusEffect(
+    React.useCallback(() => {
+      // Re-establish WebSocket connection when screen is focused
+      WebSocketService.setDispatch(dispatch);
+      WebSocketService.setCurrentUserId(user?.id); // Set numeric user ID
+      
+      if (!WebSocketService.isConnected) {
+        console.log('ChatScreen focused: WebSocket not connected, reconnecting...');
+        WebSocketService.connect()
+          .then(() => {
+            console.log('ChatScreen: WebSocket connected successfully');
+            WebSocketService.subscribeToChat(chat.id, dispatch);
+            WebSocketService.joinChat(chat.id);
+          })
+          .catch((error) => {
+            console.error('ChatScreen: Failed to connect WebSocket:', error);
+          });
+      } else {
+        console.log('ChatScreen: WebSocket already connected');
+        // Ensure we're subscribed to this chat
+        WebSocketService.subscribeToChat(chat.id, dispatch);
+        WebSocketService.joinChat(chat.id);
+      }
+    }, [chat.id, dispatch, user?.id])
+  );
 
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {

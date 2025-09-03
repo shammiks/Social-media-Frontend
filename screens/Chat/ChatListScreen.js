@@ -43,7 +43,14 @@ const ChatListScreen = ({ navigation }) => {
     if (user?.id) {
       // Initialize WebSocket connection
       WebSocketService.setDispatch(dispatch);
-      WebSocketService.connect();
+      WebSocketService.setCurrentUserId(user.id); // Set numeric user ID
+      WebSocketService.connect()
+        .then(() => {
+          console.log('ChatListScreen: WebSocket connected successfully');
+        })
+        .catch((error) => {
+          console.error('ChatListScreen: Failed to connect WebSocket:', error);
+        });
     }
 
     // Don't disconnect on unmount since other screens might be using WebSocket

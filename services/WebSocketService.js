@@ -15,6 +15,7 @@ class WebSocketService {
     this.shouldReconnect = true;
     this.dispatch = null; // Store Redux dispatch
     this.currentUserId = null;
+    this.isSubscribed = false; // Track if we've subscribed to user queues
   }
 
   // Method to set Redux dispatch for handling WebSocket messages
@@ -22,9 +23,24 @@ class WebSocketService {
     this.dispatch = dispatch;
   }
 
+  // Method to set current user ID (should be called with numeric user ID)
+  setCurrentUserId(userId) {
+    this.currentUserId = userId;
+    console.log('WebSocket: Current user ID set to:', userId);
+    console.log('WebSocket: isConnected:', this.isConnected, 'client exists:', !!this.client, 'isSubscribed:', this.isSubscribed);
+    
+    // If we're already connected and have a user ID, subscribe to user queues
+    if (this.isConnected && this.currentUserId && this.client) {
+      console.log('WebSocket: Already connected, subscribing to user queues now');
+      this.subscribeToUserQueues();
+    } else {
+      console.log('WebSocket: Not ready for subscription yet - will subscribe on connect');
+    }
+  }
+
   async connect() {
     if (this.isConnected || this.isConnecting) {
-      return;
+      return Promise.resolve();
     }
 
     if (this.reconnectTimer) {
@@ -34,94 +50,134 @@ class WebSocketService {
 
     this.isConnecting = true;
 
-    try {
-      const token = await AsyncStorage.getItem('authToken');
-      if (!token) {
-        console.error('No authentication token found for WebSocket connection');
+    return new Promise(async (resolve, reject) => {
+      // Add a timeout for the connection
+      const connectionTimeout = setTimeout(() => {
+        console.error('WebSocket connection timeout');
         this.isConnecting = false;
-        this.shouldReconnect = false;
-        throw new Error('No authentication token found');
-      }
+        reject(new Error('Connection timeout'));
+      }, 10000); // 10 second timeout
 
-      // Extract user ID from token for subscriptions
       try {
-        const payload = JSON.parse(atob(token.split('.')[1]));
-        this.currentUserId = payload.sub || payload.userId; // Adjust based on your JWT structure
-      } catch (e) {
-        console.error('Could not extract user ID from token:', e);
-      }
+        const token = await AsyncStorage.getItem('authToken');
+        if (!token) {
+          console.error('No authentication token found for WebSocket connection');
+          this.isConnecting = false;
+          this.shouldReconnect = false;
+          reject(new Error('No authentication token found'));
+          return;
+        }
 
-      this.client = new Client({
-        webSocketFactory: () => new SockJS(`${this.baseURL}/ws`),
-        connectHeaders: {
-          'Authorization': `Bearer ${token}`,
-        },
-        
-        reconnectDelay: 0,
-        maxReconnectAttempts: 0,
-        
-        heartbeatIncoming: 10000,
-        heartbeatOutgoing: 10000,
-        
-        onConnect: (frame) => {
-          this.isConnected = true;
-          this.isConnecting = false;
-          this.reconnectAttempts = 0;
-          this.sendConnect();
-          
-          // Subscribe to user-specific queues immediately after connection
-          if (this.currentUserId) {
-            this.subscribeToUserQueues();
-          }
-        },
-        
-        onDisconnect: (frame) => {
-          this.isConnected = false;
-          this.isConnecting = false;
-          
-          if (this.shouldReconnect && frame && frame.reason !== 'manual') {
-            this.handleReconnect();
-          }
-        },
-        
-        onStompError: (frame) => {
-          console.error('STOMP error frame:', frame);
-          this.isConnected = false;
-          this.isConnecting = false;
-          
-          if (frame.headers && frame.headers.message && 
-              (frame.headers.message.includes('Authentication') || 
-               frame.headers.message.includes('Unauthorized'))) {
-            console.error('Authentication failed for WebSocket connection - stopping reconnection attempts');
-            this.shouldReconnect = false;
-            return;
-          }
-          
-          if (this.shouldReconnect) {
-            this.handleReconnect();
-          }
-        },
-        
-        onWebSocketError: (error) => {
-          console.error('WebSocket connection error:', error);
-          this.isConnected = false;
-          this.isConnecting = false;
-          
-          if (this.shouldReconnect) {
-            this.handleReconnect();
-          }
-        },
-      });
+        // Extract user ID from token for subscriptions
+        try {
+          const payload = JSON.parse(atob(token.split('.')[1]));
+          // Don't extract from token since JWT contains email, not numeric ID
+          // User ID will be set via setCurrentUserId() method with the numeric ID
+          console.log('WebSocket: JWT token payload:', payload);
+          console.log('WebSocket: Will use currentUserId set via setCurrentUserId() method');
+        } catch (e) {
+          console.error('Could not parse JWT token:', e);
+        }
 
-      this.client.activate();
-    } catch (error) {
-      console.error('Failed to initialize WebSocket connection:', error);
-      this.isConnecting = false;
-      
-      if (this.shouldReconnect) {
-        this.handleReconnect();
+        this.client = new Client({
+          webSocketFactory: () => new SockJS(`${this.baseURL}/ws`),
+          connectHeaders: {
+            'Authorization': `Bearer ${token}`,
+          },
+          
+          reconnectDelay: 5000, // 5 seconds
+          maxReconnectAttempts: 10, // Try to reconnect up to 10 times
+          
+          heartbeatIncoming: 10000,
+          heartbeatOutgoing: 10000,
+          
+          debug: (str) => {
+            console.log('WebSocket STOMP Debug:', str);
+          },
+          
+          onConnect: (frame) => {
+            clearTimeout(connectionTimeout);
+            console.log('WebSocket onConnect callback triggered');
+            console.log('WebSocket connected successfully');
+            this.isConnected = true;
+            this.isConnecting = false;
+            this.reconnectAttempts = 0;
+            console.log('WebSocket: Sending connect event');
+            this.sendConnect();
+            
+            // Add a small delay before subscribing to ensure connection is fully ready
+            setTimeout(() => {
+              console.log('WebSocket: In subscription timeout, currentUserId:', this.currentUserId);
+              // Subscribe to user-specific queues immediately after connection
+              if (this.currentUserId) {
+                console.log('WebSocket: About to subscribe to user queues for user:', this.currentUserId);
+                this.subscribeToUserQueues();
+              } else {
+                console.warn('WebSocket: No current user ID available for subscription - will subscribe when user ID is set');
+              }
+            }, 100);
+            
+            console.log('WebSocket: About to resolve connection promise');
+            resolve();
+          },
+          
+          onDisconnect: (frame) => {
+            console.log('WebSocket disconnected');
+            this.isConnected = false;
+            this.isConnecting = false;
+            this.isSubscribed = false; // Reset subscription flag
+            
+            if (this.shouldReconnect && frame && frame.reason !== 'manual') {
+              this.handleReconnect();
+            }
+          },
+          
+          onStompError: (frame) => {
+            clearTimeout(connectionTimeout);
+            console.error('STOMP error frame:', frame);
+            this.isConnected = false;
+            this.isConnecting = false;
+            this.isSubscribed = false; // Reset subscription flag
+            
+            if (frame.headers && frame.headers.message && 
+                (frame.headers.message.includes('Authentication') || 
+                 frame.headers.message.includes('Unauthorized'))) {
+              console.error('Authentication failed for WebSocket connection - stopping reconnection attempts');
+              this.shouldReconnect = false;
+              reject(new Error('Authentication failed'));
+              return;
+            }
+            
+            if (this.shouldReconnect) {
+              this.handleReconnect();
+            }
+            reject(new Error('STOMP error: ' + frame.headers.message));
+          },
+          
+          onWebSocketError: (error) => {
+            clearTimeout(connectionTimeout);
+            console.error('WebSocket connection error:', error);
+            this.isConnected = false;
+            this.isConnecting = false;
+            
+            if (this.shouldReconnect) {
+              this.handleReconnect();
+            }
+            reject(error);
+          },
+        });
+
+        this.client.activate();
+      } catch (error) {
+        console.error('Failed to initialize WebSocket connection:', error);
+        this.isConnecting = false;
+        
+        if (this.shouldReconnect) {
+          this.handleReconnect();
+        }
+        reject(error);
       }
-    }
+    });
   }
 
   disconnect() {
@@ -198,6 +254,7 @@ class WebSocketService {
 
   sendConnect() {
     if (this.client && this.isConnected) {
+      console.log('WebSocket: Sending connect event');
       this.client.publish({
         destination: '/app/connect',
         body: JSON.stringify({ timestamp: Date.now() }),
@@ -208,18 +265,30 @@ class WebSocketService {
   // Subscribe to user-specific queues for receiving messages
   subscribeToUserQueues() {
     if (!this.client || !this.isConnected || !this.currentUserId) {
+      console.log('WebSocket: Cannot subscribe - client:', !!this.client, 'connected:', this.isConnected, 'userId:', this.currentUserId);
       return;
     }
 
+    if (this.isSubscribed) {
+      console.log('WebSocket: Already subscribed to user queues');
+      return;
+    }
+
+    console.log('WebSocket: Subscribing to user queues for user:', this.currentUserId);
+    this.isSubscribed = true;
+
     // Subscribe to message queue
+    console.log('WebSocket: Subscribing to /user/' + this.currentUserId + '/queue/messages');
     this.client.subscribe(`/user/${this.currentUserId}/queue/messages`, (message) => {
       try {
         const data = JSON.parse(message.body);
+        console.log('WebSocket: Received message:', data);
         
         if (this.dispatch) {
           // Handle different message types
           switch (data.type) {
             case 'NEW_MESSAGE':
+              console.log('WebSocket: Dispatching NEW_MESSAGE for chat:', data.data.chatId);
               // Dispatch the action directly
               this.dispatch({
                 type: 'chat/addMessageViaSocket',
@@ -230,6 +299,7 @@ class WebSocketService {
               });
               break;
             case 'MESSAGE_UPDATED':
+              console.log('WebSocket: Dispatching MESSAGE_UPDATED');
               this.dispatch({
                 type: 'chat/updateMessageViaSocket',
                 payload: {
@@ -240,6 +310,7 @@ class WebSocketService {
               });
               break;
             case 'MESSAGE_DELETED':
+              console.log('WebSocket: Dispatching MESSAGE_DELETED');
               this.dispatch({
                 type: 'chat/deleteMessageViaSocket',
                 payload: {
@@ -248,7 +319,11 @@ class WebSocketService {
                 }
               });
               break;
+            default:
+              console.log('WebSocket: Unknown message type:', data.type);
           }
+        } else {
+          console.warn('WebSocket: No dispatch function available');
         }
       } catch (error) {
         console.error('Error parsing message:', error);
@@ -275,15 +350,19 @@ class WebSocketService {
     });
 
     // Subscribe to read status updates
+    console.log('WebSocket: Subscribing to /user/' + this.currentUserId + '/queue/read-status');
     this.client.subscribe(`/user/${this.currentUserId}/queue/read-status`, (message) => {
       try {
         const data = JSON.parse(message.body);
+        console.log('WebSocket: Received read status update:', data);
         if (this.dispatch) {
           switch (data.type) {
             case 'READ_STATUS_UPDATED':
+              console.log('WebSocket: Dispatching READ_STATUS_UPDATED');
               this.dispatch({ type: 'chat/readStatusUpdated', payload: data.data });
               break;
             case 'CHAT_READ_UPDATED':
+              console.log('WebSocket: Dispatching CHAT_READ_UPDATED');
               this.dispatch({ type: 'chat/chatReadUpdated', payload: data.data });
               break;
           }

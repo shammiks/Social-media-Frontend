@@ -282,12 +282,19 @@ const MessageItem = ({
           )}
           
           {isMessageMine && (
-            <Ionicons
-              name={message.isRead ? "checkmark-done" : "checkmark"}
-              size={14}
-              color={message.isRead ? "#00BFA5" : "#B0BEC5"}
-              style={styles.readIndicator}
-            />
+            <View style={styles.readStatusContainer}>
+              {/* Show double tick if read by others, single tick if just delivered */}
+              <Ionicons
+                name={(message.readByCount > 0 || message.isRead) ? "checkmark-done" : "checkmark"}
+                size={14}
+                color={(message.readByCount > 0 || message.isRead) ? "#00BFA5" : "#B0BEC5"}
+                style={styles.readIndicator}
+              />
+              {/* Show read count if more than one person has read it */}
+              {message.readByCount > 1 && (
+                <Text style={styles.readCount}>{message.readByCount}</Text>
+              )}
+            </View>
           )}
         </View>
       </View>
@@ -411,10 +418,19 @@ const styles = StyleSheet.create({
     marginRight: 4,
     color: '#999',
   },
+  readStatusContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
   readIndicator: {
-    marginLeft: 4,
+    marginLeft: 2,
+  },
+  readCount: {
+    fontSize: 10,
+    color: '#00BFA5',
+    marginLeft: 2,
+    fontWeight: 'bold',
   },
 });
-
 
 export default MessageItem;
