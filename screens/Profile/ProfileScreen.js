@@ -25,6 +25,7 @@ import { Video } from 'expo-av';
 import * as Linking from 'expo-linking';
 import { useSelector, useDispatch } from 'react-redux';
 import { logout, loginSuccess } from '../../redux/authSlice';
+import TokenManager from '../../utils/tokenManager';
 import WebSocketService from '../../services/WebSocketService';
 import ChatAPI from '../../services/ChatApi';
 import NotificationIntegrationService from '../../services/NotificationIntegrationService';
@@ -336,11 +337,20 @@ const dispatch = useDispatch();
         {
           text: 'Logout',
           style: 'destructive',
-          onPress: () => {
-            // Manually clear token and disconnect WebSocket before logout
-            ChatAPI.clearAuthToken();
-            dispatch(logout());
-            navigation.replace('Login');
+          onPress: async () => {
+            try {
+              // Use TokenManager to properly logout (clears tokens and calls logout API)
+              await TokenManager.logout();
+              ChatAPI.clearAuthToken();
+              dispatch(logout());
+              navigation.replace('Login');
+            } catch (error) {
+              console.error('Logout error:', error);
+              // Still proceed with local logout even if API call fails
+              ChatAPI.clearAuthToken();
+              dispatch(logout());
+              navigation.replace('Login');
+            }
           },
         },
       ],

@@ -11,6 +11,7 @@ import { View , Platform , StatusBar , Text , ActivityIndicator } from 'react-na
 import NotificationWebSocketService from '../services/NotificationWebSocketService';
 import NotificationPopup from '../components/Notifications/NotificationPopup';
 import { fetchNotificationCounts } from '../redux/notificationSlice';
+import MigrationHelper from '../utils/migrationHelper';
 
 const STATUSBAR_HEIGHT = Platform.OS === 'android' ? StatusBar.currentHeight : 44; // Define here
 
@@ -49,13 +50,106 @@ const AuthLoader = () => {
 
 useEffect(() => {
   const loadToken = async () => {
-    // Use the same key as ChatAPI ('authToken' instead of 'token')
-    const token = await AsyncStorage.getItem('authToken');
-    const user = await AsyncStorage.getItem('user');
-    dispatch(restoreToken({
-      token,
-      user: user ? JSON.parse(user) : null,
-    }));
+    try {
+      // Run migration check first
+      const migrationResult = await MigrationHelper.migrateFromOldTokenSystem();
+      
+      if (migrationResult.needsLogin) {
+        // Migration cleared tokens, user needs to login
+        dispatch(restoreToken({
+          token: null,
+          refreshToken: null,
+          user: null,
+          tokenExpiry: null,
+        }));
+        setLoading(false);
+        return;
+      }
+      
+      // Load all auth-related data
+      const token = await AsyncStorage.getItem('authToken');
+      const refreshToken = await AsyncStorage.getItem('refreshToken');
+      const user = await AsyncStorage.getItem('user');
+      const tokenExpiry = await AsyncStorage.getItem('tokenExpiry');
+      
+      // Check if token is expired
+      const now = Date.now();
+      const expiry = tokenExpiry ? parseInt(tokenExpiry) : 0;
+      
+      if (token && expiry > now) {
+        // Token is still valid
+        dispatch(restoreToken({
+          token,
+          refreshToken,
+          user: user ? JSON.parse(user) : null,
+          tokenExpiry: expiry,
+        }));
+      } else if (refreshToken) {
+        // Token expired but we have refresh token, try to refresh
+        try {
+          const response = await fetch('http://192.168.43.36:8080/api/auth/refresh-token', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ refreshToken }),
+          });
+          
+          if (response.ok) {
+            const data = await response.json();
+            const newExpiry = Date.now() + (data.expiresIn * 1000);
+            
+            // Store new tokens
+            await AsyncStorage.setItem('authToken', data.accessToken);
+            if (data.refreshToken) {
+              await AsyncStorage.setItem('refreshToken', data.refreshToken);
+            }
+            await AsyncStorage.setItem('tokenExpiry', newExpiry.toString());
+            
+            dispatch(restoreToken({
+              token: data.accessToken,
+              refreshToken: data.refreshToken || refreshToken,
+              user: user ? JSON.parse(user) : null,
+              tokenExpiry: newExpiry,
+            }));
+          } else {
+            // Refresh failed, clear tokens
+            await AsyncStorage.multiRemove(['authToken', 'refreshToken', 'user', 'tokenExpiry']);
+            dispatch(restoreToken({
+              token: null,
+              refreshToken: null,
+              user: null,
+              tokenExpiry: null,
+            }));
+          }
+        } catch (refreshError) {
+          console.error('Token refresh failed:', refreshError);
+          // Clear tokens on refresh failure
+          await AsyncStorage.multiRemove(['authToken', 'refreshToken', 'user', 'tokenExpiry']);
+          dispatch(restoreToken({
+            token: null,
+            refreshToken: null,
+            user: null,
+            tokenExpiry: null,
+          }));
+        }
+      } else {
+        // No valid tokens
+        dispatch(restoreToken({
+          token: null,
+          refreshToken: null,
+          user: null,
+          tokenExpiry: null,
+        }));
+      }
+    } catch (error) {
+      console.error('Error loading tokens:', error);
+      dispatch(restoreToken({
+        token: null,
+        refreshToken: null,
+        user: null,
+        tokenExpiry: null,
+      }));
+    }
+    
     setLoading(false);
   };
   loadToken();

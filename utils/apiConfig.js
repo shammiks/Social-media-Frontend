@@ -33,9 +33,4 @@ export const createAuthHeaders = (token) => ({
   'Accept': 'application/json',
 });
 
-console.log('📡 API Configuration loaded:', {
-  baseUrl: API_BASE_URL,
-  endpoints: Object.keys(API_ENDPOINTS)
-});
-
 export default API_ENDPOINTS;

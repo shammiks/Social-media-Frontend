@@ -1,4 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import TokenManager from '../utils/tokenManager';
 
 // Import WebSocketService to disconnect on auth failures
 let WebSocketService;
@@ -29,27 +30,15 @@ class ChatAPI {
   }
 
   async getAuthToken() {
-    if (!this.token) {
-      this.token = await AsyncStorage.getItem('authToken');
+    try {
+      // Use TokenManager to get a valid token (handles refresh automatically)
+      const token = await TokenManager.getValidToken();
+      this.token = token;
+      return token;
+    } catch (error) {
+      console.error('Error getting auth token:', error);
+      return null;
     }
-    
-    // Check if token is expired
-    if (this.token) {
-      try {
-        const payload = JSON.parse(atob(this.token.split('.')[1]));
-        const currentTime = Math.floor(Date.now() / 1000);
-        const expirationTime = payload.exp;
-        
-        if (currentTime > expirationTime) {
-          console.error('Token is expired - user will need to login again');
-          return this.token;
-        }
-      } catch (error) {
-        console.error('Error decoding token:', error);
-      }
-    }
-    
-    return this.token;
   }
 
   async setAuthToken(token) {
@@ -59,7 +48,7 @@ class ChatAPI {
 
   async clearAuthToken() {
     this.token = null;
-    await AsyncStorage.removeItem('authToken');
+    await TokenManager.clearTokens();
     
     if (WebSocketService) {
       WebSocketService.disconnect();

@@ -57,91 +57,73 @@ const navigation = useNavigation();
   };
 
   const handleLogin = async () => {
-  if (!email || !password) {
-    Alert.alert("Error", "Please enter both email and password.");
-    return;
-  }
-
-  // Validate email format
-  if (!validateEmail(email)) {
-    Alert.alert("Invalid Email", "Please enter a valid email address");
-    return;
-  }
-
-  setIsLoading(true);
-
-  try {
-    const response = await fetch("http://192.168.43.36:8080/api/auth/login", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, password }),
-    });
-
-    const data = await response.json(); // correct way to extract response body
-
-    if (response.ok) {
-      // Check for different possible token field names
-      const token = data.token || data.accessToken || data.access_token || data.authToken;
-      
-      if (!token) {
-        console.error('No token found in login response!');
-        Alert.alert("Login Error", "No authentication token received from server.");
-        return;
-      }
-      
-      // First set the auth token and wait for it to be stored
-      await ChatAPI.setAuthToken(token);
-      
-      // Test the token immediately by making a simple API call
-      try {
-        console.log('Testing token with a simple API call...');
-        
-        // First try to verify the token with the profile endpoint or a simpler endpoint
-        const profileResponse = await fetch(`http://192.168.43.36:8080/api/auth/profile`, {
-          method: 'GET',
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json'
-          }
-        });
-        
-        if (!profileResponse.ok) {
-          // Try chats endpoint as fallback
-        }
-        
-        const testResult = await ChatAPI.getUserChatsList();
-      } catch (tokenTestError) {
-        // Token test failed, proceeding anyway
-      }
-      
-      // Dispatch the login success action
-      dispatch(loginSuccess({
-        token: token,
-        user: data.user,
-      }));
-
-      // Reset and connect WebSocket with a longer delay to ensure everything is ready
-      WebSocketService.resetConnection();
-      setTimeout(() => {
-        WebSocketService.connect();
-      }, 1000);
-      
-      // Add a small delay before navigation to ensure everything is set up
-      setTimeout(() => {
-        setIsLoading(false);
-        navigation.reset({ index: 0, routes: [{ name: "Authenticated" }] });
-      }, 1500);
-    } else {
-      setIsLoading(false);
-      Alert.alert("Login Failed", data.message || "Invalid credentials");
+    if (!email || !password) {
+      Alert.alert("Error", "Please enter both email and password.");
+      return;
     }
 
-  } catch (error) {
-    setIsLoading(false);
-    console.error("Login error:", error);
-    Alert.alert("Error", "Something went wrong.");
-  }
-};
+    // Validate email format
+    if (!validateEmail(email)) {
+      Alert.alert("Invalid Email", "Please enter a valid email address");
+      return;
+    }
+
+    setIsLoading(true);
+
+    try {
+      const response = await fetch("http://192.168.43.36:8080/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }),
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        // Handle new response structure with refresh tokens
+        const accessToken = data.accessToken || data.token;
+        const refreshToken = data.refreshToken;
+        const expiresIn = data.expiresIn || 300; // Default to 5 minutes
+        const user = data.user;
+        
+        if (!accessToken) {
+          Alert.alert("Login Error", "No authentication token received from server.");
+          return;
+        }
+        
+        // Set the auth token for ChatAPI
+        await ChatAPI.setAuthToken(accessToken);
+        
+        // Dispatch the login success action with new structure
+        dispatch(loginSuccess({
+          accessToken: accessToken,
+          refreshToken: refreshToken,
+          expiresIn: expiresIn,
+          user: user,
+        }));
+
+        // Reset and connect WebSocket
+        WebSocketService.resetConnection();
+        setTimeout(() => {
+          WebSocketService.connect();
+        }, 1000);
+        
+        // Navigate to authenticated area
+        setTimeout(() => {
+          setIsLoading(false);
+          navigation.reset({ index: 0, routes: [{ name: "Authenticated" }] });
+        }, 1500);
+      } else {
+        setIsLoading(false);
+        Alert.alert("Login Failed", data.message || "Invalid credentials");
+      }
+
+    } catch (error) {
+      setIsLoading(false);
+      console.error("Login error:", error);
+      Alert.alert("Error", "Something went wrong.");
+    }
+  };
 
 const STATUSBAR_HEIGHT = Platform.OS === "android" ? StatusBar.currentHeight : 44;
 
