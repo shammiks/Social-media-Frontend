@@ -9,7 +9,7 @@ import { Video } from 'expo-av';
 import { Ionicons, Feather, MaterialIcons } from '@expo/vector-icons';
 import * as Animatable from 'react-native-animatable';
 import { StatusBar } from 'expo-status-bar';
-import axios from 'axios';
+import API from '../../utils/api';
 import { useSelector } from 'react-redux';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import * as FileSystem from 'expo-file-system';
@@ -63,9 +63,7 @@ function CommentsModal({ visible, onClose, postId, token, currentUser, navigatio
   const fetchComments = async () => {
     try {
       setLoading(true);
-      const res = await axios.get(`${COMMENTS_URL}/posts/${postId}/comments?page=0&size=50`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      const res = await API.get(`${COMMENTS_URL}/posts/${postId}/comments?page=0&size=50`);
       setComments(res.data.content || []);
     } catch (err) {
       console.error('Fetch comments error:', err.message);
@@ -80,11 +78,10 @@ function CommentsModal({ visible, onClose, postId, token, currentUser, navigatio
 
     try {
       setSubmitting(true);
-      const res = await axios.post(`${COMMENTS_URL}/${postId}`, {
+      const res = await API.post(`${COMMENTS_URL}/${postId}`, {
         content: newComment.trim()
       }, {
         headers: { 
-          Authorization: `Bearer ${token}`,
           'Content-Type': 'application/json'
         }
       });
@@ -120,9 +117,7 @@ function CommentsModal({ visible, onClose, postId, token, currentUser, navigatio
 
   const deleteComment = async (commentId) => {
     try {
-      await axios.delete(`${COMMENTS_URL}/${commentId}`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      await API.delete(`${COMMENTS_URL}/${commentId}`);
       
       setComments(prev => prev.filter(comment => comment.id !== commentId));
     } catch (err) {
@@ -260,16 +255,13 @@ export default function FeedScreen() {
     
     // Fetch posts and bookmarks in parallel
     const [postsRes, bookmarksRes] = await Promise.all([
-      axios.get(`${BASE_URL}?page=0&size=100&sort=createdAt,desc&t=${Date.now()}`, { 
+      API.get(`${BASE_URL}?page=0&size=100&sort=createdAt,desc&t=${Date.now()}`, { 
         headers: { 
-          Authorization: `Bearer ${token}`,
           'Cache-Control': 'no-cache',
           'Pragma': 'no-cache'
         } 
       }),
-      axios.get(`${BOOKMARKS_URL}/my-bookmarks`, { 
-        headers: { Authorization: `Bearer ${token}` } 
-      })
+      API.get(`${BOOKMARKS_URL}/my-bookmarks`)
     ]);
 
     // Create a Set of bookmarked post IDs for O(1) lookups
@@ -316,9 +308,7 @@ export default function FeedScreen() {
     );
 
     try {
-      const res = await axios.post(`${BASE_URL}/${postId}/like`, {}, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      const res = await API.post(`${BASE_URL}/${postId}/like`, {});
 
       // Update with server response to ensure consistency
       setPosts(prev =>
@@ -352,9 +342,7 @@ export default function FeedScreen() {
 
   const handleBookmark = async (postId) => {
   try {
-    const res = await axios.post(`${BOOKMARKS_URL}/${postId}`, {}, {
-      headers: { Authorization: `Bearer ${token}` }
-    });
+    const res = await API.post(`${BOOKMARKS_URL}/${postId}`, {});
 
        const isBookmarked = res.data.bookmarked;
 

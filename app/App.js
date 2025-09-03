@@ -11,7 +11,9 @@ import { View , Platform , StatusBar , Text , ActivityIndicator } from 'react-na
 import NotificationWebSocketService from '../services/NotificationWebSocketService';
 import NotificationPopup from '../components/Notifications/NotificationPopup';
 import { fetchNotificationCounts } from '../redux/notificationSlice';
+import tokenManager from '../utils/tokenManager';
 import MigrationHelper from '../utils/migrationHelper';
+import API from '../utils/api';
 
 const STATUSBAR_HEIGHT = Platform.OS === 'android' ? StatusBar.currentHeight : 44; // Define here
 
@@ -87,15 +89,10 @@ useEffect(() => {
       } else if (refreshToken) {
         // Token expired but we have refresh token, try to refresh
         try {
-          const response = await fetch('http://192.168.43.36:8080/api/auth/refresh-token', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ refreshToken }),
-          });
+          const response = await API.post('/auth/refresh-token', { refreshToken });
           
-          if (response.ok) {
-            const data = await response.json();
-            const newExpiry = Date.now() + (data.expiresIn * 1000);
+          const data = response.data;
+          const newExpiry = Date.now() + (data.expiresIn * 1000);
             
             // Store new tokens
             await AsyncStorage.setItem('authToken', data.accessToken);
@@ -110,16 +107,6 @@ useEffect(() => {
               user: user ? JSON.parse(user) : null,
               tokenExpiry: newExpiry,
             }));
-          } else {
-            // Refresh failed, clear tokens
-            await AsyncStorage.multiRemove(['authToken', 'refreshToken', 'user', 'tokenExpiry']);
-            dispatch(restoreToken({
-              token: null,
-              refreshToken: null,
-              user: null,
-              tokenExpiry: null,
-            }));
-          }
         } catch (refreshError) {
           console.error('Token refresh failed:', refreshError);
           // Clear tokens on refresh failure

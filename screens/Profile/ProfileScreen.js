@@ -17,7 +17,7 @@ import {
   Dimensions,
   ScrollView,
 } from 'react-native';
-import axios from 'axios';
+import API from '../../utils/api';
 import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system';
 import * as MediaLibrary from 'expo-media-library';
@@ -90,20 +90,12 @@ const dispatch = useDispatch();
       setLoading(true);
       let followeesRes = { data: 0 };
       const [myPostsRes, savedPostsRes, followersRes] = await Promise.all([
-        axios.get(`${BASE_URL}/api/posts/me`, {
-          headers: { Authorization: `Bearer ${token}` }
-        }),
-        axios.get(`${BASE_URL}/api/bookmarks/my-bookmarks`, {
-          headers: { Authorization: `Bearer ${token}` }
-        }),
-        axios.get(`${BASE_URL}/api/follow/count/followers/${user.id}`, {
-          headers: { Authorization: `Bearer ${token}` }
-        })
+        API.get(`${BASE_URL}/api/posts/me`),
+        API.get(`${BASE_URL}/api/bookmarks/my-bookmarks`),
+        API.get(`${BASE_URL}/api/follow/count/followers/${user.id}`)
       ]);
       try {
-        followeesRes = await axios.get(`${BASE_URL}/api/follow/count/following/${user.id}`, {
-          headers: { Authorization: `Bearer ${token}` }
-        });
+        followeesRes = await API.get(`${BASE_URL}/api/follow/count/following/${user.id}`);
       } catch (e) {
         followeesRes = { data: 0 };
       }
@@ -171,9 +163,7 @@ const dispatch = useDispatch();
 
   const handleBookmark = async (postId) => {
     try {
-      const res = await axios.post(`${BASE_URL}/api/bookmarks/${postId}`, {}, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      const res = await API.post(`${BASE_URL}/api/bookmarks/${postId}`, {});
 
       const isBookmarked = res.data.bookmarked;
 

@@ -34,7 +34,7 @@ import {
 import WebSocketService from '../../services/WebSocketService';
 import ChatAPI from '../../services/ChatApi';
 import { LinearGradient } from 'expo-linear-gradient';
-import axios from 'axios';
+import API from '../../utils/api';
 import { API_ENDPOINTS } from '../../utils/apiConfig';
 
 const { height: screenHeight } = Dimensions.get('window');

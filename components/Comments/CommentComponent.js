@@ -10,7 +10,7 @@ import {
   ActivityIndicator
 } from 'react-native';
 import { MaterialIcons, Ionicons } from '@expo/vector-icons';
-import axios from 'axios';
+import API from '../../utils/api';
 import { useSelector } from 'react-redux';
 import { API_ENDPOINTS } from '../../utils/apiConfig';
 import NotificationIntegrationService from '../../services/NotificationIntegrationService';
@@ -69,9 +69,8 @@ const CommentComponent = ({
       setLoadingReplies(true);
       console.log('Fetching replies with URL:', `${API_ENDPOINTS.COMMENTS}/${comment.id}/replies`);
       
-      const response = await axios.get(
-        `${API_ENDPOINTS.COMMENTS}/${comment.id}/replies`,
-        { headers: { Authorization: `Bearer ${token}` } }
+      const response = await API.get(
+        `${API_ENDPOINTS.COMMENTS}/${comment.id}/replies`
       );
       setReplies(response.data || []);
       setShowReplies(true);
@@ -126,10 +125,9 @@ const CommentComponent = ({
     
     try {
       setUpdating(true);
-      const response = await axios.put(
+      const response = await API.put(
         `${API_ENDPOINTS.COMMENTS}/${comment.id}`,
-        { content: editText.trim() },
-        { headers: { Authorization: `Bearer ${token}` } }
+        { content: editText.trim() }
       );
       
       onCommentUpdate(response.data);

@@ -31,12 +31,14 @@ class ChatAPI {
 
   async getAuthToken() {
     try {
+      console.log('🎫 ChatAPI - Getting auth token...');
       // Use TokenManager to get a valid token (handles refresh automatically)
       const token = await TokenManager.getValidToken();
       this.token = token;
+      console.log('🎫 ChatAPI - Retrieved token:', !!token);
       return token;
     } catch (error) {
-      console.error('Error getting auth token:', error);
+      console.error('❌ ChatAPI - Error getting auth token:', error);
       return null;
     }
   }
