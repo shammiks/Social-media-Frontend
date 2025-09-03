@@ -21,7 +21,8 @@ const MessageItem = ({
   chat, 
   onMessageLongPress, 
   onReactionPress, 
-  isMessageMine 
+  isMessageMine,
+  blockStatus = { areBlocked: false, iBlockedThem: false, theyBlockedMe: false }
 }) => {
   // State for media modal
   const [showMediaModal, setShowMediaModal] = useState(false);
@@ -132,11 +133,19 @@ const MessageItem = ({
       {!isMessageMine && (
         <View style={styles.avatarContainer}>
           <Image 
-            source={{ 
-              uri: senderProfilePicture 
-                ? senderProfilePicture 
-                : `https://ui-avatars.com/api/?name=${encodeURIComponent(senderDisplayName)}&background=random&color=fff&size=40&rounded=true&bold=true`
-            }} 
+            source={(function() {
+              // Hide profile picture if users are blocked
+              if (blockStatus.areBlocked && !isMessageMine) {
+                return { uri: `https://ui-avatars.com/api/?name=Blocked&background=ccc&color=666&size=40&rounded=true&bold=true` };
+              }
+              
+              // Normal profile picture logic
+              return {
+                uri: senderProfilePicture 
+                  ? senderProfilePicture 
+                  : `https://ui-avatars.com/api/?name=${encodeURIComponent(senderDisplayName)}&background=random&color=fff&size=40&rounded=true&bold=true`
+              };
+            })()} 
             style={styles.avatar}
             defaultSource={require('../../assets/default-avatar.png')}
             onError={() => {

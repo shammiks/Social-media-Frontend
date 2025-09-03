@@ -405,6 +405,45 @@ async sendMessage(messageData) {
   async getUserMediaFiles(page = 0, size = 20) {
     return this.makeRequest(`/api/media/my-files?page=${page}&size=${size}`);
   }
+
+  // Block/Unblock User APIs
+  async blockUser(chatId, userId) {
+    return this.makeRequest(`/api/chats/${chatId}/block/${userId}`, {
+      method: 'POST',
+    });
+  }
+
+  async unblockUser(chatId, userId) {
+    return this.makeRequest(`/api/chats/${chatId}/block/${userId}`, {
+      method: 'DELETE',
+    });
+  }
+
+  async getBlockStatus(chatId, userId) {
+    return this.makeRequest(`/api/chats/${chatId}/block-status/${userId}`);
+  }
+
+  // Alternative block APIs (general user blocking)
+  async blockUserGeneral(userId) {
+    return this.makeRequest('/api/users/blocks', {
+      method: 'POST',
+      body: JSON.stringify({ userId }),
+    });
+  }
+
+  async unblockUserGeneral(userId) {
+    return this.makeRequest(`/api/users/blocks/${userId}`, {
+      method: 'DELETE',
+    });
+  }
+
+  async getBlockedUsers() {
+    return this.makeRequest('/api/users/blocks');
+  }
+
+  async checkIfUserBlocked(userId) {
+    return this.makeRequest(`/api/users/blocks/check/${userId}`);
+  }
 }
 
 export default new ChatAPI();

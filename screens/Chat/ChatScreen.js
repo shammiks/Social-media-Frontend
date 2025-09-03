@@ -32,6 +32,7 @@ import {
   markChatAsRead
 } from '../../redux/ChatSlice';
 import WebSocketService from '../../services/WebSocketService';
+import ChatAPI from '../../services/ChatApi';
 import { LinearGradient } from 'expo-linear-gradient';
 import axios from 'axios';
 import { API_ENDPOINTS } from '../../utils/apiConfig';
@@ -81,6 +82,15 @@ const ChatScreen = ({ route, navigation }) => {
   const [showPinnedModal, setShowPinnedModal] = useState(false);
   const [reactionModal, setReactionModal] = useState({ visible: false, messageId: null });
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const [showChatMenu, setShowChatMenu] = useState(false);
+  const [isUserBlocked, setIsUserBlocked] = useState(false);
+  const [blockStatus, setBlockStatus] = useState({
+    areBlocked: false,
+    iBlockedThem: false,
+    theyBlockedMe: false,
+    blockType: 'none' // 'none', 'i_blocked_them', 'they_blocked_me', 'mutual'
+  });
+  const [blockingUser, setBlockingUser] = useState(false);
   const flatListRef = useRef(null);
   const typingTimeoutRef = useRef(null);
   // ...existing code...
@@ -525,6 +535,7 @@ const ChatScreen = ({ route, navigation }) => {
         onMessageLongPress={handleMessageLongPress}
         onReactionPress={addReaction}
         isMessageMine={isMessageMine(message)}
+        blockStatus={blockStatus}
       />
     );
   };
@@ -695,6 +706,120 @@ const ChatScreen = ({ route, navigation }) => {
     return 'Active now';
   };
 
+  // Block/Unblock functionality
+  const getOtherUserId = () => {
+    const otherParticipant = chat.participants?.find(p => p.user?.id !== user?.id);
+    return otherParticipant?.user?.id;
+  };
+
+  const checkBlockStatus = async () => {
+    const otherUserId = getOtherUserId();
+    if (!otherUserId) return;
+
+    try {
+      const response = await ChatAPI.getBlockStatus(chat.id, otherUserId);
+      setIsUserBlocked(response.areBlocked);
+      setBlockStatus({
+        areBlocked: response.areBlocked,
+        iBlockedThem: response.iBlockedThem,
+        theyBlockedMe: response.theyBlockedMe,
+        blockType: response.blockStatus
+      });
+    } catch (error) {
+      console.error('Failed to check block status:', error);
+    }
+  };
+
+  const handleBlockUser = async () => {
+    const otherUserId = getOtherUserId();
+    if (!otherUserId) return;
+
+    const otherUser = chat.participants?.find(p => p.user?.id !== user?.id)?.user;
+    const displayName = otherUser?.displayName || otherUser?.username || 'this user';
+
+    Alert.alert(
+      'Block User',
+      `Are you sure you want to block ${displayName}? You won't be able to send messages to each other and their profile picture will be hidden.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { 
+          text: 'Block', 
+          style: 'destructive',
+          onPress: async () => {
+            setBlockingUser(true);
+            try {
+              await ChatAPI.blockUser(chat.id, otherUserId);
+              setIsUserBlocked(true);
+              setBlockStatus({
+                areBlocked: true,
+                iBlockedThem: true,
+                theyBlockedMe: false,
+                blockType: 'i_blocked_them'
+              });
+              setShowChatMenu(false);
+              Alert.alert('Success', `${displayName} has been blocked.`);
+            } catch (error) {
+              console.error('Failed to block user:', error);
+              Alert.alert('Error', 'Failed to block user. Please try again.');
+            } finally {
+              setBlockingUser(false);
+            }
+          }
+        }
+      ]
+    );
+  };
+
+  const handleUnblockUser = async () => {
+    const otherUserId = getOtherUserId();
+    if (!otherUserId) return;
+
+    const otherUser = chat.participants?.find(p => p.user?.id !== user?.id)?.user;
+    const displayName = otherUser?.displayName || otherUser?.username || 'this user';
+
+    Alert.alert(
+      'Unblock User',
+      `Are you sure you want to unblock ${displayName}? You'll be able to send messages to each other again.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { 
+          text: 'Unblock', 
+          onPress: async () => {
+            setBlockingUser(true);
+            try {
+              await ChatAPI.unblockUser(chat.id, otherUserId);
+              setIsUserBlocked(false);
+              setBlockStatus({
+                areBlocked: false,
+                iBlockedThem: false,
+                theyBlockedMe: false,
+                blockType: 'none'
+              });
+              setShowChatMenu(false);
+              Alert.alert('Success', `${displayName} has been unblocked.`);
+            } catch (error) {
+              console.error('Failed to unblock user:', error);
+              Alert.alert('Error', 'Failed to unblock user. Please try again.');
+            } finally {
+              setBlockingUser(false);
+            }
+          }
+        }
+      ]
+    );
+  };
+
+  const handleChatMenuPress = () => {
+    setShowChatMenu(true);
+  };
+
+  // Check block status when chat loads
+  useEffect(() => {
+    if (chat.id && chat.chatType === 'PRIVATE') {
+      checkBlockStatus();
+    }
+  }, [chat.id, chat.chatType]);
+
   return (
     <View style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="#6C7CE7" />
@@ -718,6 +843,12 @@ const ChatScreen = ({ route, navigation }) => {
             <View style={styles.headerAvatar}>
               <Image
                 source={(function() {
+                  // Hide profile picture if users are blocked
+                  if (blockStatus.areBlocked) {
+                    // Show generic blocked user avatar
+                    return { uri: `https://ui-avatars.com/api/?name=Blocked&background=ccc&color=666&size=40` };
+                  }
+                  
                   // Robust avatar logic: try all possible fields
                   const otherParticipant = chat.participants?.find(p => p.user?.id !== user?.id);
                   let avatarUrl = null;
@@ -776,7 +907,7 @@ const ChatScreen = ({ route, navigation }) => {
             
             <TouchableOpacity 
               style={styles.headerActionButton}
-              onPress={() => Alert.alert('Chat Info', 'Chat settings coming soon!')}
+              onPress={handleChatMenuPress}
               activeOpacity={0.7}
             >
               <Ionicons name="ellipsis-vertical" size={20} color="#fff" />
@@ -829,6 +960,21 @@ const ChatScreen = ({ route, navigation }) => {
         </View>
       )}
 
+      {/* Blocked User Banner */}
+      {isUserBlocked && (
+        <View style={styles.blockedUserBanner}>
+          <Ionicons name="person-remove" size={20} color="#FF6B6B" />
+          <Text style={styles.blockedUserText}>
+            {blockStatus.blockType === 'i_blocked_them' 
+              ? 'You have blocked this user. Messages cannot be sent or received.'
+              : blockStatus.blockType === 'they_blocked_me'
+              ? 'You have been blocked by this user. Messages cannot be sent or received.'
+              : 'Both users are blocked. Messages cannot be sent or received.'
+            }
+          </Text>
+        </View>
+      )}
+
       <KeyboardAvoidingView
         style={styles.chatContainer}
         behavior={Platform.OS === 'ios' ? 'padding' : 'padding'}
@@ -878,7 +1024,7 @@ const ChatScreen = ({ route, navigation }) => {
           token={token}
           apiBase={API_ENDPOINTS.BASE}
           isTyping={sendingMessage}
-          disabled={sendingMessage}
+          disabled={sendingMessage || isUserBlocked}
           showEmojiPicker={showEmojiPicker}
           onEmojiToggle={() => setShowEmojiPicker(!showEmojiPicker)}
         />
@@ -1091,6 +1237,67 @@ const ChatScreen = ({ route, navigation }) => {
           </ScrollView>
         </View>
       )}
+
+      {/* Chat Menu Modal */}
+      <Modal
+        visible={showChatMenu}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setShowChatMenu(false)}
+      >
+        <TouchableOpacity
+          style={styles.modalOverlay}
+          onPress={() => setShowChatMenu(false)}
+        >
+          <View style={styles.chatMenuContainer}>
+            {chat.chatType === 'PRIVATE' && (
+              <>
+                <TouchableOpacity
+                  style={styles.chatMenuOption}
+                  onPress={isUserBlocked ? handleUnblockUser : handleBlockUser}
+                  disabled={blockingUser}
+                >
+                  <Ionicons 
+                    name={isUserBlocked ? "person-add" : "person-remove"} 
+                    size={20} 
+                    color={isUserBlocked ? "#4CAF50" : "#FF6B6B"} 
+                  />
+                  <Text style={[
+                    styles.chatMenuOptionText,
+                    { color: isUserBlocked ? "#4CAF50" : "#FF6B6B" }
+                  ]}>
+                    {blockingUser ? "Processing..." : (isUserBlocked ? "Unblock User" : "Block User")}
+                  </Text>
+                </TouchableOpacity>
+                
+                <View style={styles.chatMenuDivider} />
+              </>
+            )}
+            
+            <TouchableOpacity
+              style={styles.chatMenuOption}
+              onPress={() => {
+                setShowChatMenu(false);
+                Alert.alert('Chat Info', 'Chat details coming soon!');
+              }}
+            >
+              <Ionicons name="information-circle" size={20} color="#333" />
+              <Text style={styles.chatMenuOptionText}>Chat Info</Text>
+            </TouchableOpacity>
+            
+            <TouchableOpacity
+              style={styles.chatMenuOption}
+              onPress={() => {
+                setShowChatMenu(false);
+                Alert.alert('Settings', 'Chat settings coming soon!');
+              }}
+            >
+              <Ionicons name="settings" size={20} color="#333" />
+              <Text style={styles.chatMenuOptionText}>Settings</Text>
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
+      </Modal>
     </View>
   );
 };
@@ -1690,6 +1897,52 @@ const styles = StyleSheet.create({
   },
   emojiText: {
     fontSize: 20,
+  },
+
+  // Chat Menu Styles
+  chatMenuContainer: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 8,
+    minWidth: 200,
+    elevation: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+  },
+  chatMenuOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+    borderRadius: 8,
+  },
+  chatMenuOptionText: {
+    fontSize: 16,
+    color: '#333',
+    marginLeft: 12,
+  },
+  chatMenuDivider: {
+    height: 1,
+    backgroundColor: '#e0e0e0',
+    marginHorizontal: 8,
+  },
+
+  // Blocked User Banner
+  blockedUserBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFEBEE',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderLeftWidth: 4,
+    borderLeftColor: '#FF6B6B',
+  },
+  blockedUserText: {
+    fontSize: 14,
+    color: '#FF6B6B',
+    marginLeft: 8,
+    flex: 1,
   },
 });
 
