@@ -48,6 +48,7 @@ API.interceptors.response.use(
     console.log('🔍 API Interceptor - Request failed:', {
       status: error.response?.status,
       url: originalRequest?.url,
+      fullURL: originalRequest?.baseURL + originalRequest?.url,
       method: originalRequest?.method,
       hasRetryFlag: !!originalRequest._retry
     });
@@ -80,17 +81,23 @@ API.interceptors.response.use(
         }
 
         console.log('📡 API Interceptor - Making refresh token request...');
-        const response = await axios.post('http://192.168.1.5:8080/api/auth/refresh-token', {
+        // Use a separate axios instance to avoid interceptor loops
+        const refreshResponse = await axios.post('http://192.168.1.5:8080/api/auth/refresh-token', {
           refreshToken: refreshToken
+        }, {
+          timeout: 10000, // 10 second timeout
+          headers: {
+            'Content-Type': 'application/json'
+          }
         });
 
         console.log('✅ API Interceptor - Refresh token request successful:', {
-          hasAccessToken: !!response.data.accessToken,
-          hasRefreshToken: !!response.data.refreshToken,
-          expiresIn: response.data.expiresIn
+          hasAccessToken: !!refreshResponse.data.accessToken,
+          hasRefreshToken: !!refreshResponse.data.refreshToken,
+          expiresIn: refreshResponse.data.expiresIn
         });
 
-        const { accessToken: newAccessToken, refreshToken: newRefreshToken } = response.data;
+        const { accessToken: newAccessToken, refreshToken: newRefreshToken } = refreshResponse.data;
 
         // Store new tokens
         await AsyncStorage.setItem('authToken', newAccessToken);
@@ -104,10 +111,28 @@ API.interceptors.response.use(
 
         processQueue(null, newAccessToken);
         
-        console.log('🔄 API Interceptor - Retrying original request...');
-        return API(originalRequest);
+        console.log('🔄 API Interceptor - Retrying original request...', {
+          method: originalRequest.method,
+          url: originalRequest.url,
+          baseURL: originalRequest.baseURL
+        });
+        
+        // Create a fresh request to avoid any URL corruption
+        const retryRequest = {
+          ...originalRequest,
+          headers: {
+            ...originalRequest.headers,
+            Authorization: `Bearer ${newAccessToken}`
+          }
+        };
+        
+        return API(retryRequest);
       } catch (refreshError) {
-        console.error('❌ API Interceptor - Token refresh failed:', refreshError);
+        console.error('❌ API Interceptor - Token refresh failed:', {
+          error: refreshError.message,
+          status: refreshError.response?.status,
+          data: refreshError.response?.data
+        });
         processQueue(refreshError, null);
         
         // Clear tokens and redirect to login

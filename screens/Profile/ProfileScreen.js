@@ -81,6 +81,8 @@ const dispatch = useDispatch();
   const [bioModal, setBioModal] = useState({ visible: false });
   const [bioContent, setBioContent] = useState('');
   const [bioLoading, setBioLoading] = useState(false);
+  // Followers/Following modal state
+  const [listModal, setListModal] = useState({ visible: false, type: null, data: [], loading: false });
   const pagerRef = useRef(null);
 
   const BASE_URL = API_ENDPOINTS.BASE.replace('/api', ''); // Remove /api suffix for direct endpoint calls
@@ -315,6 +317,23 @@ const dispatch = useDispatch();
     setBioModal({ visible: false });
     setBioContent('');
   };
+
+  // Fetch followers/following list
+  const openListModal = async (type) => {
+    setListModal({ visible: true, type, data: [], loading: true });
+    try {
+      let url = '';
+      if (type === 'followers') url = `${BASE_URL}/api/follow/followers/me`;
+      else url = `${BASE_URL}/api/follow/following/me`;
+      const res = await API.get(url);
+      setListModal({ visible: true, type, data: res.data.content || [], loading: false });
+    } catch (err) {
+      setListModal({ visible: true, type, data: [], loading: false });
+      Alert.alert('Error', `Failed to load ${type} list`);
+    }
+  };
+
+  const closeListModal = () => setListModal({ visible: false, type: null, data: [], loading: false });
 
   const handleLogout = () => {
     Alert.alert(
@@ -1078,15 +1097,26 @@ const dispatch = useDispatch();
                 <Text style={styles.statLabel}>Posts</Text>
               </View>
               <View style={styles.statDivider} />
-              <View style={styles.statItem}>
+              {/* Only show as touchable if viewing own profile */}
+              <TouchableOpacity
+                style={styles.statItem}
+                onPress={() => openListModal('followers')}
+                disabled={!user}
+                activeOpacity={0.7}
+              >
                 <Text style={styles.statNumber}>{followersCount}</Text>
                 <Text style={styles.statLabel}>Followers</Text>
-              </View>
+              </TouchableOpacity>
               <View style={styles.statDivider} />
-              <View style={styles.statItem}>
+              <TouchableOpacity
+                style={styles.statItem}
+                onPress={() => openListModal('following')}
+                disabled={!user}
+                activeOpacity={0.7}
+              >
                 <Text style={styles.statNumber}>{followeesCount}</Text>
                 <Text style={styles.statLabel}>Following</Text>
-              </View>
+              </TouchableOpacity>
             </View>
           </View>
         </View>
@@ -1478,6 +1508,45 @@ const dispatch = useDispatch();
             </Text>
           </View>
         </KeyboardAvoidingView>
+      </Modal>
+
+      {/* Followers/Following List Modal */}
+      <Modal
+        visible={listModal.visible}
+        animationType="slide"
+        onRequestClose={closeListModal}
+      >
+        <View style={styles.modalContainer}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>
+              {listModal.type === 'followers' ? 'Followers' : 'Following'}
+            </Text>
+            <TouchableOpacity onPress={closeListModal}>
+              <Ionicons name="close" size={24} color="#333" />
+            </TouchableOpacity>
+          </View>
+          {listModal.loading ? (
+            <ActivityIndicator size="large" color="#1e90ff" style={{ marginTop: 32 }} />
+          ) : (
+            <FlatList
+              data={listModal.data}
+              keyExtractor={(item, index) => `${item.id || item.userId || 'user'}-${index}`}
+              renderItem={({ item }) => (
+                <View style={styles.listItem}>
+                  <Image
+                    source={{ uri: item.avatar || item.profileImageUrl || undefined }}
+                    style={styles.listAvatar}
+                  />
+                  <Text style={styles.listUsername}>{item.username || item.name || 'User'}</Text>
+                </View>
+              )}
+              ListEmptyComponent={<Text style={styles.emptyText}>
+                No {listModal.type} found
+              </Text>}
+              contentContainerStyle={{ flexGrow: 1, padding: 24 }}
+            />
+          )}
+        </View>
       </Modal>
     </View>
   );
@@ -2166,6 +2235,27 @@ const styles = StyleSheet.create({
     marginTop: 8,
     fontSize: 12,
     color: '#999',
+  },
+  
+  // Followers/Following List Styles
+  listItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderColor: '#eee',
+  },
+  listAvatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    marginRight: 16,
+    backgroundColor: '#ddd',
+  },
+  listUsername: {
+    fontSize: 16,
+    color: '#222',
+    fontWeight: '500',
   },
 });
 
