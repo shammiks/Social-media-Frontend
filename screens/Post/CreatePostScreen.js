@@ -21,7 +21,7 @@ import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import { useSelector } from 'react-redux';
 import { useNavigation } from '@react-navigation/native';
 
-const API_URL = 'http://192.168.1.5:8080/api/posts/upload';
+const API_URL = '/posts/upload';  // Use relative URL for API calls
 
 const CreatePostScreen = () => {
   const navigation = useNavigation();

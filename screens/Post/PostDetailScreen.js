@@ -58,7 +58,7 @@ const PostDetailScreen = ({ route, navigation }) => {
 
       // Get all posts and find the specific one (fallback approach)
       const allPostsResponse = await API.get(
-        `http://192.168.1.5:8080/api/posts?page=0&size=100&sort=createdAt,desc`
+        `/posts?page=0&size=100&sort=createdAt,desc`
       );
       
       const allPosts = allPostsResponse.data?.content || allPostsResponse.data || [];
@@ -112,7 +112,7 @@ const PostDetailScreen = ({ route, navigation }) => {
       // Fetch comments
       try {
         const commentsResponse = await API.get(
-          `http://192.168.1.5:8080/api/comments/posts/${postId}/comments?page=0&size=50`
+          `/comments/posts/${postId}/comments?page=0&size=50`
         );
         
         setComments(commentsResponse.data?.content || commentsResponse.data || []);
@@ -180,8 +180,8 @@ const PostDetailScreen = ({ route, navigation }) => {
       setLiked(newLikedState);
       setLikesCount(newLikesCount);
 
-      // Use the same endpoint pattern as FeedScreen
-      const likeEndpoint = `http://192.168.1.5:8080/api/posts/${postId}/like`;
+      // Use relative endpoint for API calls (baseURL is already set in API instance)
+      const likeEndpoint = `/posts/${postId}/like`;
 
       if (!prevLiked) {
         // Like the post

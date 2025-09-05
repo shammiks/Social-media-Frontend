@@ -2,6 +2,8 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { API_ENDPOINTS } from './apiConfig';
 
+const API_BASE_URL = 'http://192.168.1.5:8080/api';
+
 export class TokenManager {
   static async isTokenExpired() {
     try {
@@ -23,8 +25,8 @@ export class TokenManager {
         isExpired: timeUntilExpiry <= 30000
       });
       
-      // Consider token expired if it expires in the next 30 seconds
-      return timeUntilExpiry <= 30000;
+      // Consider token expired if it expires in the next 60 seconds (more aggressive refresh)
+      return timeUntilExpiry <= 60000;
     } catch (error) {
       console.error('❌ TokenManager - Error checking token expiry:', error);
       return true;
@@ -38,17 +40,22 @@ export class TokenManager {
       console.log('🔄 TokenManager - Starting token refresh:', !!refreshToken);
       
       if (!refreshToken) {
+        console.error('❌ TokenManager - No refresh token found in AsyncStorage');
         throw new Error('No refresh token available');
       }
 
-      console.log('📡 TokenManager - Making refresh API call...');
-      const response = await fetch('http://192.168.1.5:8080/api/auth/refresh-token', {
+      console.log('📡 TokenManager - Making refresh API call to backend...');
+      console.log('🎫 TokenManager - Using refresh token:', refreshToken.substring(0, 20) + '...');
+      
+      const response = await fetch(`${API_BASE_URL}/auth/refresh-token`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({ refreshToken }),
       });
+
+      console.log('📡 TokenManager - Refresh response status:', response.status);
 
       if (!response.ok) {
         const errorText = await response.text();
@@ -57,7 +64,14 @@ export class TokenManager {
           statusText: response.statusText,
           error: errorText
         });
-        throw new Error(`Token refresh failed: ${response.status}`);
+        
+        // If refresh token is invalid/expired, clear all tokens
+        if (response.status === 400 || response.status === 401) {
+          console.log('🧹 TokenManager - Clearing tokens due to invalid refresh token');
+          await this.clearTokens();
+        }
+        
+        throw new Error(`Token refresh failed: ${response.status} - ${errorText}`);
       }
 
       const data = await response.json();
@@ -106,8 +120,13 @@ export class TokenManager {
       
       if (isExpired) {
         console.log('⏰ TokenManager - Token expired, refreshing...');
-        const refreshResult = await this.refreshToken();
-        return refreshResult.accessToken;
+        try {
+          const refreshResult = await this.refreshToken();
+          return refreshResult.accessToken;
+        } catch (refreshError) {
+          console.error('❌ TokenManager - Token refresh failed:', refreshError);
+          return null;
+        }
       }
       
       const token = await AsyncStorage.getItem('authToken');
@@ -126,7 +145,7 @@ export class TokenManager {
       if (refreshToken) {
         // Call logout endpoint to revoke refresh token
         try {
-          await fetch('http://192.168.1.5:8080/api/auth/logout', {
+          await fetch(`${API_BASE_URL}/auth/logout`, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',

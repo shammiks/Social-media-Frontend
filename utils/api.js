@@ -7,6 +7,12 @@ const API = axios.create({
   baseURL: "http://192.168.1.5:8080/api", // Use consistent baseURL
 });
 
+// Separate axios instance for token refresh to avoid interceptor loops
+const refreshAPI = axios.create({
+  baseURL: "http://192.168.1.5:8080/api",
+  timeout: 10000, // 10 second timeout
+});
+
 // Flag to prevent multiple refresh attempts
 let isRefreshing = false;
 let failedQueue = [];
@@ -82,10 +88,9 @@ API.interceptors.response.use(
 
         console.log('📡 API Interceptor - Making refresh token request...');
         // Use a separate axios instance to avoid interceptor loops
-        const refreshResponse = await axios.post('http://192.168.1.5:8080/api/auth/refresh-token', {
+        const refreshResponse = await refreshAPI.post('/auth/refresh-token', {
           refreshToken: refreshToken
         }, {
-          timeout: 10000, // 10 second timeout
           headers: {
             'Content-Type': 'application/json'
           }
@@ -97,17 +102,29 @@ API.interceptors.response.use(
           expiresIn: refreshResponse.data.expiresIn
         });
 
-        const { accessToken: newAccessToken, refreshToken: newRefreshToken } = refreshResponse.data;
+        const { accessToken: newAccessToken, refreshToken: newRefreshToken, expiresIn } = refreshResponse.data;
+
+        // Calculate new expiry time
+        const newExpiry = Date.now() + (expiresIn * 1000);
 
         // Store new tokens
         await AsyncStorage.setItem('authToken', newAccessToken);
         await AsyncStorage.setItem('refreshToken', newRefreshToken);
+        await AsyncStorage.setItem('tokenExpiry', newExpiry.toString());
         
-        console.log('💾 API Interceptor - Stored new tokens successfully');
+        console.log('💾 API Interceptor - Stored new tokens successfully with expiry:', new Date(newExpiry).toISOString());
 
         // Update the authorization header
         API.defaults.headers.common['Authorization'] = `Bearer ${newAccessToken}`;
         originalRequest.headers.Authorization = `Bearer ${newAccessToken}`;
+
+        // Notify WebSocketService about token refresh
+        try {
+          const { default: WebSocketService } = await import('../services/WebSocketService');
+          WebSocketService.reconnectWithNewToken();
+        } catch (importError) {
+          console.warn('Could not update WebSocket with new token:', importError);
+        }
 
         processQueue(null, newAccessToken);
         
@@ -136,7 +153,7 @@ API.interceptors.response.use(
         processQueue(refreshError, null);
         
         // Clear tokens and redirect to login
-        await AsyncStorage.multiRemove(['authToken', 'refreshToken', 'user']);
+        await AsyncStorage.multiRemove(['authToken', 'refreshToken', 'user', 'tokenExpiry']);
         
         console.log('🚪 API Interceptor - Cleared tokens, user needs to login again');
         

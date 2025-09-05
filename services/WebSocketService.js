@@ -199,6 +199,31 @@ class WebSocketService {
     this.currentUserId = null;
   }
 
+  // Method to reconnect with updated token after token refresh
+  async reconnectWithNewToken() {
+    console.log('WebSocket: Reconnecting with new token...');
+    const wasConnected = this.isConnected;
+    const userId = this.currentUserId;
+    
+    if (wasConnected) {
+      // Disconnect first
+      this.disconnect();
+      this.shouldReconnect = true;
+      
+      // Wait a moment then reconnect
+      setTimeout(async () => {
+        try {
+          await this.connect();
+          if (userId) {
+            this.setCurrentUserId(userId);
+          }
+        } catch (error) {
+          console.error('WebSocket: Failed to reconnect with new token:', error);
+        }
+      }, 500);
+    }
+  }
+
   resetConnection() {
     this.disconnect();
     this.shouldReconnect = true;

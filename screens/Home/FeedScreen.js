@@ -17,10 +17,10 @@ import * as MediaLibrary from 'expo-media-library';
 import CommentComponent from '../../components/Comments/CommentComponent';
 
 const { width } = Dimensions.get('window');
-const BASE_URL = 'http://192.168.1.5:8080/api/posts';
+const BASE_URL = '/posts';  // Use relative URLs for API calls
 const SERVER_BASE_URL = 'http://192.168.1.5:8080';
-const COMMENTS_URL = 'http://192.168.1.5:8080/api/comments';
-const BOOKMARKS_URL = 'http://192.168.1.5:8080/api/bookmarks';
+const COMMENTS_URL = '/comments';  // Use relative URLs for API calls
+const BOOKMARKS_URL = '/bookmarks';  // Use relative URLs for API calls
 
 // Helper function to safely format dates
 const formatDate = (dateString) => {
