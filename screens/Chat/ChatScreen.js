@@ -205,7 +205,7 @@ const ChatScreen = ({ route, navigation }) => {
 
   const editMessage = async (messageId, newContent) => {
     try {
-      const response = await axios.put(
+      const response = await API.put(
         `${API_ENDPOINTS.BASE}/messages/${messageId}`,
         { content: newContent },
         { headers: { Authorization: `Bearer ${token}` } }
@@ -222,9 +222,8 @@ const ChatScreen = ({ route, navigation }) => {
 
   const deleteMessage = async (messageId) => {
     try {
-      await axios.delete(
-        `${API_ENDPOINTS.BASE}/messages/${messageId}`,
-        { headers: { Authorization: `Bearer ${token}` } }
+      await API.delete(
+        `${API_ENDPOINTS.BASE}/messages/${messageId}`
       );
       
       // Update local state
@@ -237,10 +236,9 @@ const ChatScreen = ({ route, navigation }) => {
 
   const togglePinMessage = async (messageId) => {
     try {
-      const response = await axios.post(
+      const response = await API.post(
         `${API_ENDPOINTS.BASE}/messages/${messageId}/pin`,
-        {},
-        { headers: { Authorization: `Bearer ${token}` } }
+        {}
       );
       
       // Update local state
@@ -255,10 +253,9 @@ const ChatScreen = ({ route, navigation }) => {
 
   const addReaction = async (messageId, emoji) => {
     try {
-      const response = await axios.post(
+      const response = await API.post(
         `${API_ENDPOINTS.BASE}/messages/${messageId}/react`,
-        { emoji },
-        { headers: { Authorization: `Bearer ${token}` } }
+        { emoji }
       );
       
       // Update local state
@@ -272,9 +269,8 @@ const ChatScreen = ({ route, navigation }) => {
 
   const searchMessages = async (query) => {
     try {
-      const response = await axios.get(
-        `${API_ENDPOINTS.BASE}/messages/chat/${chat.id}/search?q=${encodeURIComponent(query)}`,
-        { headers: { Authorization: `Bearer ${token}` } }
+      const response = await API.get(
+        `${API_ENDPOINTS.BASE}/messages/chat/${chat.id}/search?q=${encodeURIComponent(query)}`
       );
       
       setSearchResults(response.data.content || []);
@@ -286,9 +282,8 @@ const ChatScreen = ({ route, navigation }) => {
 
   const loadPinnedMessages = async () => {
     try {
-      const response = await axios.get(
-        `${API_ENDPOINTS.BASE}/messages/chat/${chat.id}/pinned`,
-        { headers: { Authorization: `Bearer ${token}` } }
+      const response = await API.get(
+        `${API_ENDPOINTS.BASE}/messages/chat/${chat.id}/pinned`
       );
       
       setPinnedMessages(response.data || []);
@@ -299,10 +294,9 @@ const ChatScreen = ({ route, navigation }) => {
 
   const markAsRead = async (messageId) => {
     try {
-      await axios.post(
+      await API.post(
         `${API_ENDPOINTS.BASE}/messages/${messageId}/read`,
-        {},
-        { headers: { Authorization: `Bearer ${token}` } }
+        {}
       );
     } catch (error) {
       console.error('Mark as read error:', error);

@@ -1,4 +1,4 @@
-import axios from 'axios';
+import API from '../utils/api';
 import { API_ENDPOINTS } from '../utils/apiConfig';
 
 class NotificationApiService {
@@ -19,9 +19,8 @@ class NotificationApiService {
   // Get paginated notifications
   async getNotifications(token, page = 0, size = 20) {
     try {
-      const response = await axios.get(
-        `${this.baseURL}/notifications?page=${page}&size=${size}`,
-        { headers: this.getAuthHeaders(token) }
+      const response = await API.get(
+        `${this.baseURL}/notifications?page=${page}&size=${size}`
       );
       return response.data;
     } catch (error) {
@@ -32,9 +31,8 @@ class NotificationApiService {
   // Get unread notifications
   async getUnreadNotifications(token, page = 0, size = 20) {
     try {
-      const response = await axios.get(
-        `${this.baseURL}/notifications/unread?page=${page}&size=${size}`,
-        { headers: this.getAuthHeaders(token) }
+      const response = await API.get(
+        `${this.baseURL}/notifications/unread?page=${page}&size=${size}`
       );
       return response.data;
     } catch (error) {
@@ -45,9 +43,8 @@ class NotificationApiService {
   // Get notifications by type
   async getNotificationsByType(token, type, page = 0, size = 20) {
     try {
-      const response = await axios.get(
-        `${this.baseURL}/notifications/type/${type}?page=${page}&size=${size}`,
-        { headers: this.getAuthHeaders(token) }
+      const response = await API.get(
+        `${this.baseURL}/notifications/type/${type}?page=${page}&size=${size}`
       );
       return response.data;
     } catch (error) {
@@ -58,9 +55,8 @@ class NotificationApiService {
   // Get recent notifications (for quick preview)
   async getRecentNotifications(token, limit = 5) {
     try {
-      const response = await axios.get(
-        `${this.baseURL}/notifications/recent?limit=${limit}`,
-        { headers: this.getAuthHeaders(token) }
+      const response = await API.get(
+        `${this.baseURL}/notifications/recent?limit=${limit}`
       );
       return response.data;
     } catch (error) {

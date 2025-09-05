@@ -1,5 +1,5 @@
 // services/NotificationIntegrationService.js
-import axios from 'axios';
+import API from '../utils/api';
 import { API_ENDPOINTS } from '../utils/apiConfig';
 
 class NotificationIntegrationService {
@@ -11,12 +11,9 @@ class NotificationIntegrationService {
   async likePost(postId, token, currentLikeState) {
     try {
       // Call your existing like API
-      const response = await axios.post(
+      const response = await API.post(
         `${this.baseURL}/posts/${postId}/like`, 
-        {}, 
-        {
-          headers: { Authorization: `Bearer ${token}` }
-        }
+        {}
       );
 
       // The backend should automatically send notifications via WebSocket
@@ -35,21 +32,15 @@ class NotificationIntegrationService {
       // Try the toggle endpoint first
       let response;
       try {
-        response = await axios.post(
+        response = await API.post(
           `${API_ENDPOINTS.FOLLOW}/toggle?followeeId=${targetUserId}`,
-          {},
-          {
-            headers: { Authorization: `Bearer ${token}` }
-          }
+          {}
         );
       } catch (error) {
         // Fallback to the alternative endpoint
-        response = await axios.post(
+        response = await API.post(
           `${API_ENDPOINTS.FOLLOW}/${currentFollowState ? 'unfollow' : 'follow'}/${targetUserId}`,
-          {},
-          {
-            headers: { Authorization: `Bearer ${token}` }
-          }
+          {}
         );
       }
 
@@ -67,12 +58,9 @@ class NotificationIntegrationService {
   async addComment(postId, content, token) {
     try {
       // Call your existing comment API
-      const response = await axios.post(
+      const response = await API.post(
         `${API_ENDPOINTS.COMMENTS}/${postId}`,
-        { content },
-        {
-          headers: { Authorization: `Bearer ${token}` }
-        }
+        { content }
       );
 
       // The backend should automatically send notifications via WebSocket
@@ -88,12 +76,9 @@ class NotificationIntegrationService {
   // Enhanced Comment Like function
   async likeComment(commentId, token) {
     try {
-      const response = await axios.post(
+      const response = await API.post(
         `${API_ENDPOINTS.COMMENTS}/${commentId}/like`,
-        {},
-        {
-          headers: { Authorization: `Bearer ${token}` }
-        }
+        {}
       );
 
       return response.data;
@@ -106,12 +91,9 @@ class NotificationIntegrationService {
   // Enhanced Reply function
   async addReply(commentId, content, token) {
     try {
-      const response = await axios.post(
+      const response = await API.post(
         `${API_ENDPOINTS.COMMENTS}/${commentId}/reply`,
-        { content },
-        {
-          headers: { Authorization: `Bearer ${token}` }
-        }
+        { content }
       );
 
       return response.data;

@@ -42,7 +42,7 @@ export class TokenManager {
       }
 
       console.log('📡 TokenManager - Making refresh API call...');
-      const response = await fetch('http://192.168.43.36:8080/api/auth/refresh-token', {
+      const response = await fetch('http://192.168.1.5:8080/api/auth/refresh-token', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -126,7 +126,7 @@ export class TokenManager {
       if (refreshToken) {
         // Call logout endpoint to revoke refresh token
         try {
-          await fetch('http://192.168.43.36:8080/api/auth/logout', {
+          await fetch('http://192.168.1.5:8080/api/auth/logout', {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',

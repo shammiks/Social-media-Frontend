@@ -1,5 +1,5 @@
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
-import axios from 'axios';
+import API from '../utils/api';
 import { API_ENDPOINTS } from '../utils/apiConfig';
 
 // Async thunks for API calls
@@ -15,9 +15,7 @@ export const fetchNotifications = createAsyncThunk(
         url = `${API_ENDPOINTS.BASE}/notifications/type/${type}?page=${page}&size=${size}`;
       }
 
-      const response = await axios.get(url, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      const response = await API.get(url);
       
       return {
         notifications: response.data.content || [],
@@ -39,9 +37,8 @@ export const fetchUnreadNotifications = createAsyncThunk(
       const { auth } = getState();
       const token = auth.token;
 
-      const response = await axios.get(
-        `${API_ENDPOINTS.BASE}/notifications/unread?page=${page}&size=${size}`,
-        { headers: { Authorization: `Bearer ${token}` } }
+      const response = await API.get(
+        `${API_ENDPOINTS.BASE}/notifications/unread?page=${page}&size=${size}`
       );
       
       return response.data.content || [];
@@ -58,9 +55,7 @@ export const fetchNotificationCounts = createAsyncThunk(
       const { auth } = getState();
       const token = auth.token;
 
-      const response = await axios.get(`${API_ENDPOINTS.BASE}/notifications/counts`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      const response = await API.get(`${API_ENDPOINTS.BASE}/notifications/counts`);
       
       return response.data;
     } catch (error) {
@@ -77,10 +72,9 @@ export const markNotificationAsRead = createAsyncThunk(
       const token = auth.token;
 
       // Make the API call to mark as read
-      await axios.post(
+      await API.post(
         `${API_ENDPOINTS.BASE}/notifications/${notificationId}/read`,
-        {},
-        { headers: { Authorization: `Bearer ${token}` } }
+        {}
       );
       
       // After successful API call, fetch updated counts
@@ -100,10 +94,9 @@ export const markNotificationAsSeen = createAsyncThunk(
       const { auth } = getState();
       const token = auth.token;
 
-      await axios.post(
+      await API.post(
         `${API_ENDPOINTS.BASE}/notifications/${notificationId}/seen`,
-        {},
-        { headers: { Authorization: `Bearer ${token}` } }
+        {}
       );
       
       // After successful API call, fetch updated counts
@@ -123,10 +116,9 @@ export const markAllAsRead = createAsyncThunk(
       const { auth } = getState();
       const token = auth.token;
 
-      const response = await axios.post(
+      const response = await API.post(
         `${API_ENDPOINTS.BASE}/notifications/mark-all-read`,
-        {},
-        { headers: { Authorization: `Bearer ${token}` } }
+        {}
       );
       
       // After successful API call, fetch updated counts and fresh notifications
@@ -147,10 +139,9 @@ export const markAllAsSeen = createAsyncThunk(
       const { auth } = getState();
       const token = auth.token;
 
-      const response = await axios.post(
+      const response = await API.post(
         `${API_ENDPOINTS.BASE}/notifications/mark-all-seen`,
-        {},
-        { headers: { Authorization: `Bearer ${token}` } }
+        {}
       );
       
       // After successful API call, fetch updated counts
@@ -170,9 +161,8 @@ export const deleteNotification = createAsyncThunk(
       const { auth } = getState();
       const token = auth.token;
 
-      await axios.delete(
-        `${API_ENDPOINTS.BASE}/notifications/${notificationId}`,
-        { headers: { Authorization: `Bearer ${token}` } }
+      await API.delete(
+        `${API_ENDPOINTS.BASE}/notifications/${notificationId}`
       );
       
       // After successful deletion, fetch updated counts

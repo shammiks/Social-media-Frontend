@@ -11,7 +11,7 @@ try {
 
 class ChatAPI {
   constructor() {
-    this.baseURL = 'http://192.168.43.36:8080';
+    this.baseURL = 'http://192.168.1.5:8080';
     this.token = null;
   }
 

@@ -17,7 +17,7 @@ import Swiper from 'react-native-swiper';
 import { useSelector } from 'react-redux';
 import { Ionicons } from '@expo/vector-icons';
 import CommentComponent from '../../components/Comments/CommentComponent';
-import axios from 'axios';
+import API from '../../utils/api';
 import { API_ENDPOINTS } from '../../utils/apiConfig';
 
 const PostDetailScreen = ({ route, navigation }) => {
@@ -57,9 +57,8 @@ const PostDetailScreen = ({ route, navigation }) => {
       };
 
       // Get all posts and find the specific one (fallback approach)
-      const allPostsResponse = await axios.get(
-        `http://192.168.43.36:8080/api/posts?page=0&size=100&sort=createdAt,desc`,
-        { headers }
+      const allPostsResponse = await API.get(
+        `http://192.168.1.5:8080/api/posts?page=0&size=100&sort=createdAt,desc`
       );
       
       const allPosts = allPostsResponse.data?.content || allPostsResponse.data || [];
@@ -112,9 +111,8 @@ const PostDetailScreen = ({ route, navigation }) => {
 
       // Fetch comments
       try {
-        const commentsResponse = await axios.get(
-          `http://192.168.43.36:8080/api/comments/posts/${postId}/comments?page=0&size=50`,
-          { headers }
+        const commentsResponse = await API.get(
+          `http://192.168.1.5:8080/api/comments/posts/${postId}/comments?page=0&size=50`
         );
         
         setComments(commentsResponse.data?.content || commentsResponse.data || []);
@@ -183,18 +181,18 @@ const PostDetailScreen = ({ route, navigation }) => {
       setLikesCount(newLikesCount);
 
       // Use the same endpoint pattern as FeedScreen
-      const likeEndpoint = `http://192.168.43.36:8080/api/posts/${postId}/like`;
+      const likeEndpoint = `http://192.168.1.5:8080/api/posts/${postId}/like`;
 
       if (!prevLiked) {
         // Like the post
-        await axios.post(likeEndpoint, {}, { headers });
+        await API.post(likeEndpoint, {});
       } else {
         // Unlike the post (try DELETE first, then POST toggle)
         try {
-          await axios.delete(likeEndpoint, { headers });
+          await API.delete(likeEndpoint);
         } catch (deleteError) {
           // If DELETE doesn't work, try POST toggle
-          await axios.post(likeEndpoint, {}, { headers });
+          await API.post(likeEndpoint, {});
         }
       }
 
@@ -319,7 +317,7 @@ const PostDetailScreen = ({ route, navigation }) => {
             const prependBase = (url) => {
               if (!url) return null;
               if (url.startsWith('http')) return url;
-              return `http://192.168.43.36:8080${url}`;
+              return `http://192.168.1.5:8080${url}`;
             };
             // Collect all media into an array for the carousel
             const mediaItems = [];

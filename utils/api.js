@@ -4,7 +4,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { API_ENDPOINTS } from './apiConfig';
 
 const API = axios.create({
-  baseURL: "http://192.168.43.36:8080/api", // Use consistent baseURL
+  baseURL: "http://192.168.1.5:8080/api", // Use consistent baseURL
 });
 
 // Flag to prevent multiple refresh attempts
@@ -80,7 +80,7 @@ API.interceptors.response.use(
         }
 
         console.log('📡 API Interceptor - Making refresh token request...');
-        const response = await axios.post('http://192.168.43.36:8080/api/auth/refresh-token', {
+        const response = await axios.post('http://192.168.1.5:8080/api/auth/refresh-token', {
           refreshToken: refreshToken
         });
 

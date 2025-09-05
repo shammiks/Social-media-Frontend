@@ -260,9 +260,8 @@ const dispatch = useDispatch();
           type: 'image/jpeg',
         });
 
-        const res = await axios.put(`${BASE_URL}/api/auth/me/avatar`, formData, {
+        const res = await API.put(`${BASE_URL}/api/auth/me/avatar`, formData, {
           headers: {
-            Authorization: `Bearer ${token}`,
             'Content-Type': 'multipart/form-data',
           },
         });
@@ -285,12 +284,11 @@ const dispatch = useDispatch();
     
     try {
       setBioLoading(true);
-      const response = await axios.put(
+      const response = await API.put(
         `${BASE_URL}/api/auth/me/bio`,
         { bio: bioContent },
         {
           headers: {
-            Authorization: `Bearer ${token}`,
             'Content-Type': 'application/json',
           },
         }
@@ -370,9 +368,7 @@ const dispatch = useDispatch();
   // Function to refresh only saved posts
   const refreshSavedPosts = useCallback(async () => {
     try {
-      const savedPostsRes = await axios.get(`${BASE_URL}/api/bookmarks/my-bookmarks`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      const savedPostsRes = await API.get(`${BASE_URL}/api/bookmarks/my-bookmarks`);
       
       const sortedSavedPosts = savedPostsRes.data
         .map(post => ({
@@ -491,9 +487,7 @@ const dispatch = useDispatch();
   const fetchComments = async (postId) => {
     try {
       setCommentsLoading(true);
-      const res = await axios.get(`${BASE_URL}/api/comments/posts/${postId}/comments`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      const res = await API.get(`${BASE_URL}/api/comments/posts/${postId}/comments`);
       setComments(res.data.content || []);
     } catch (err) {
       console.error('Fetch comments error:', err.message);
@@ -540,9 +534,7 @@ const dispatch = useDispatch();
 
   const deleteComment = async (commentId) => {
     try {
-      await axios.delete(`${BASE_URL}/api/comments/${commentId}`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      await API.delete(`${BASE_URL}/api/comments/${commentId}`);
       setComments(prev => prev.filter(comment => comment.id !== commentId));
     } catch (err) {
       console.error('Delete comment error:', err.message);
@@ -569,7 +561,7 @@ const dispatch = useDispatch();
 
     try {
       setEditLoading(true);
-      const response = await axios.put(`${BASE_URL}/api/posts/${editPostModal.post.id}`, {
+      const response = await API.put(`${BASE_URL}/api/posts/${editPostModal.post.id}`, {
         content: editContent.trim(),
         imageUrl: editPostModal.post.imageUrl,
         videoUrl: editPostModal.post.videoUrl,
@@ -577,7 +569,6 @@ const dispatch = useDispatch();
         isPublic: editPostModal.post.isPublic
       }, {
         headers: { 
-          Authorization: `Bearer ${token}`,
           'Content-Type': 'application/json'
         }
       });
@@ -616,9 +607,7 @@ const dispatch = useDispatch();
           style: 'destructive',
           onPress: async () => {
             try {
-              await axios.delete(`${BASE_URL}/api/posts/${postId}`, {
-                headers: { Authorization: `Bearer ${token}` }
-              });
+              await API.delete(`${BASE_URL}/api/posts/${postId}`);
 
               // Remove the post from state
               setPosts(prev => prev.filter(post => post.id !== postId));
@@ -676,11 +665,10 @@ const dispatch = useDispatch();
 
     try {
       setEditCommentLoading(true);
-      const response = await axios.put(`${BASE_URL}/api/comments/${editCommentModal.comment.id}`, {
+      const response = await API.put(`${BASE_URL}/api/comments/${editCommentModal.comment.id}`, {
         content: editCommentContent.trim()
       }, {
         headers: { 
-          Authorization: `Bearer ${token}`,
           'Content-Type': 'application/json'
         }
       });

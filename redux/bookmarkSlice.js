@@ -1,16 +1,14 @@
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
-import axios from 'axios';
+import API from '../utils/api';
 
-const BASE_URL = 'http://192.168.43.36:8080';
+const BASE_URL = 'http://192.168.1.5:8080';
 
 // Async thunk to fetch bookmarked posts
 export const fetchBookmarkedPosts = createAsyncThunk(
   'bookmarks/fetchBookmarkedPosts',
   async (token, thunkAPI) => {
     try {
-      const res = await axios.get(`${BASE_URL}/api/bookmarks`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      const res = await API.get(`${BASE_URL}/api/bookmarks`);
       return res.data;
     } catch (err) {
       return thunkAPI.rejectWithValue(err.response?.data || err.message);

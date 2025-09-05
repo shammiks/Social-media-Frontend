@@ -11,7 +11,7 @@ class WebSocketService {
     this.reconnectAttempts = 0;
     this.maxReconnectAttempts = 3;
     this.reconnectTimer = null;
-    this.baseURL = 'http://192.168.43.36:8080';
+    this.baseURL = 'http://192.168.1.5:8080';
     this.shouldReconnect = true;
     this.dispatch = null; // Store Redux dispatch
     this.currentUserId = null;

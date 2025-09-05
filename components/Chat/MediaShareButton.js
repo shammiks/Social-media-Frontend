@@ -4,7 +4,7 @@ import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system';
 import { Ionicons } from '@expo/vector-icons';
-import axios from 'axios';
+import API from '../../utils/api';
 
 /**
  * MediaShareButton component for picking and uploading media, then calling onMediaUploaded callback with backend response.
@@ -111,13 +111,12 @@ const MediaShareButton = ({ token, onMediaUploaded, apiBase, disabled }) => {
       
       console.log('Uploading media:', { uri, name, fileType });
       
-      const response = await axios.post(
+      const response = await API.post(
         `${apiBase}/media/upload`,
         formData,
         {
           headers: {
             'Content-Type': 'multipart/form-data',
-            Authorization: `Bearer ${token}`,
           },
         }
       );

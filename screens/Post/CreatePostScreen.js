@@ -15,12 +15,13 @@ import {
 import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import API from '../../utils/api';
 import Animated, { FadeInUp } from 'react-native-reanimated';
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import { useSelector } from 'react-redux';
 import { useNavigation } from '@react-navigation/native';
 
-const API_URL = 'http://192.168.43.36:8080/api/posts/upload';
+const API_URL = 'http://192.168.1.5:8080/api/posts/upload';
 
 const CreatePostScreen = () => {
   const navigation = useNavigation();
@@ -147,16 +148,13 @@ const CreatePostScreen = () => {
         });
       }
 
-      const response = await fetch(API_URL, {
-        method: 'POST',
+      const response = await API.post(API_URL, formData, {
         headers: {
-          Authorization: `Bearer ${token}`,
-          // Don't set Content-Type for FormData - let it be set automatically
+          'Content-Type': 'multipart/form-data',
         },
-        body: formData,
       });
 
-      if (response.ok) {
+      if (response.status === 200 || response.status === 201) {
         setContent('');
         setImage(null);
         setVideo(null);
@@ -178,18 +176,11 @@ const CreatePostScreen = () => {
             }
           ]
         );
-      } else {
-        const text = await response.text();
-        let message = 'Failed to create post';
-        try {
-          const json = JSON.parse(text);
-          message = json.message || message;
-        } catch {}
-        Alert.alert('Error', message);
       }
     } catch (err) {
       console.error('Post error:', err);
-      Alert.alert('Error', 'Something went wrong.');
+      const message = err.response?.data?.message || 'Failed to create post';
+      Alert.alert('Error', message);
     } finally {
       setLoading(false);
     }

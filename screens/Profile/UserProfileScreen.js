@@ -20,7 +20,7 @@ import {
   ScrollView
 } from 'react-native';
 import { useSelector, useDispatch } from 'react-redux';
-import axios from 'axios';
+import API from '../../utils/api';
 import { Ionicons, Feather, MaterialIcons } from '@expo/vector-icons';
 import { Video } from 'expo-av';
 import * as Animatable from 'react-native-animatable';
@@ -81,9 +81,7 @@ function CommentsModal({ visible, onClose, postId, token, currentUserId, current
   const fetchComments = async () => {
     try {
       setLoading(true);
-      const res = await axios.get(`${API_ENDPOINTS.COMMENTS}/posts/${postId}/comments?page=0&size=50`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      const res = await API.get(`${API_ENDPOINTS.COMMENTS}/posts/${postId}/comments?page=0&size=50`);
       setComments(res.data.content || []);
     } catch (err) {
       console.error('Fetch comments error:', err.message);
@@ -297,9 +295,7 @@ const checkFollowStatus = async (targetUserId, headers) => {
       'Accept': 'application/json',
     };
     
-    const response = await axios.get(`${API_ENDPOINTS.FOLLOW}/status?followeeId=${targetUserId}`, { 
-      headers: requestHeaders
-    });
+    const response = await API.get(`${API_ENDPOINTS.FOLLOW}/status?followeeId=${targetUserId}`);
     
     const freshStatus = {
       isFollowing: response.data.isFollowing || response.data.following || false,
@@ -317,7 +313,7 @@ const checkFollowStatus = async (targetUserId, headers) => {
     if (statusError.response?.status === 401) {
       // Try to get basic follower count from user profile if available
       try {
-        const userProfileResponse = await axios.get(`${API_ENDPOINTS.USERS}/${targetUserId}`, { headers });
+        const userProfileResponse = await API.get(`${API_ENDPOINTS.USERS}/${targetUserId}`);
         const followerCount = userProfileResponse.data.followersCount || 0;
         
         const fallbackStatus = {
@@ -343,7 +339,7 @@ const checkFollowStatus = async (targetUserId, headers) => {
     
     // Method 2: Try alternative status endpoint format (for non-401 errors)
     try {
-      const altResponse = await axios.get(`${API_ENDPOINTS.FOLLOW}/status/${targetUserId}`, { headers });
+      const altResponse = await API.get(`${API_ENDPOINTS.FOLLOW}/status/${targetUserId}`);
       
       const altStatus = {
         isFollowing: altResponse.data.isFollowing || altResponse.data.following || false,
@@ -358,7 +354,7 @@ const checkFollowStatus = async (targetUserId, headers) => {
       if (altError.response?.status === 401) {
         // Try to get basic follower count from user profile
         try {
-          const userProfileResponse = await axios.get(`${API_ENDPOINTS.USERS}/${targetUserId}`, { headers });
+          const userProfileResponse = await API.get(`${API_ENDPOINTS.USERS}/${targetUserId}`);
           const followerCount = userProfileResponse.data.followersCount || 0;
           
           const fallbackStatus = { isFollowing: false, followersCount: followerCount };
@@ -373,7 +369,7 @@ const checkFollowStatus = async (targetUserId, headers) => {
 
   // Method 3: Try to get followers list and check if current user is in it
   try {
-    const followersResponse = await axios.get(`${API_ENDPOINTS.FOLLOW}/followers/${targetUserId}`, { headers });
+    const followersResponse = await API.get(`${API_ENDPOINTS.FOLLOW}/followers/${targetUserId}`);
     const followers = followersResponse.data.content || followersResponse.data || [];
     
     const isFollowing = followers.some(follow => 
@@ -404,7 +400,7 @@ const checkFollowStatus = async (targetUserId, headers) => {
 
   // Method 4: Get just the follower count
   try {
-    const countResponse = await axios.get(`${API_ENDPOINTS.FOLLOW}/count/followers/${targetUserId}`, { headers });
+    const countResponse = await API.get(`${API_ENDPOINTS.FOLLOW}/count/followers/${targetUserId}`);
     const followersCount = countResponse.data || 0;
     
     // If we have cached status, use it with updated count
@@ -444,9 +440,8 @@ const checkFollowStatus = async (targetUserId, headers) => {
     if (!isRefresh) setLoading(true);
 
     // Fetch profile
-    const profileResponse = await axios.get(
-      getUserProfileEndpoint(userId, username),
-      { headers }
+    const profileResponse = await API.get(
+      getUserProfileEndpoint(userId, username)
     );
     
     const profileData = profileResponse.data;
@@ -454,8 +449,8 @@ const checkFollowStatus = async (targetUserId, headers) => {
 
     // Fetch posts and bookmarks in parallel
     const [postsRes, bookmarksRes] = await Promise.all([
-      axios.get(`${API_ENDPOINTS.POSTS}/user/${profileData.id}`, { headers }),
-      axios.get(`${API_ENDPOINTS.BOOKMARKS}/my-bookmarks`, { headers }).catch(err => {
+      API.get(`${API_ENDPOINTS.POSTS}/user/${profileData.id}`),
+      API.get(`${API_ENDPOINTS.BOOKMARKS}/my-bookmarks`).catch(err => {
         console.warn('Bookmarks fetch failed:', err.message);
         return { data: [] };
       })
@@ -484,7 +479,7 @@ const checkFollowStatus = async (targetUserId, headers) => {
     } else {
       // For own profile, just get follower count
       try {
-        const followerCountResponse = await axios.get(`${API_ENDPOINTS.FOLLOW}/count/followers/${profileData.id}`, { headers });
+        const followerCountResponse = await API.get(`${API_ENDPOINTS.FOLLOW}/count/followers/${profileData.id}`);
         setFollowersCount(followerCountResponse.data || 0);
       } catch (countError) {
         setFollowersCount(profileData.followersCount || 0);
@@ -751,9 +746,7 @@ const renderFollowButton = () => {
     );
 
     try {
-      const res = await axios.post(`${API_ENDPOINTS.POSTS}/${postId}/like`, {}, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      const res = await API.post(`${API_ENDPOINTS.POSTS}/${postId}/like`, {});
 
       // Update with server response for consistency
       setPosts(prev =>
@@ -788,9 +781,7 @@ const renderFollowButton = () => {
   // Bookmark functionality (unchanged)
   const handleBookmark = async (postId) => {
     try {
-      const res = await axios.post(`${API_ENDPOINTS.BOOKMARKS}/${postId}`, {}, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      const res = await API.post(`${API_ENDPOINTS.BOOKMARKS}/${postId}`, {});
 
       console.log('Bookmark response:', res.data);
 

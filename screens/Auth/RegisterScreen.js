@@ -72,7 +72,7 @@ export default function RegisterScreen() {
     const requestData = { username: username, email, password };
 
     try {
-      const response = await fetch("http://192.168.43.36:8080/api/auth/register", {
+      const response = await fetch("http://192.168.1.5:8080/api/auth/register", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(requestData),
