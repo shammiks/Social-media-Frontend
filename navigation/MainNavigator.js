@@ -9,6 +9,9 @@ import PostDetailScreen from "@/screens/Post/PostDetailScreen";
 import ProfileScreen from "@/screens/Profile/ProfileScreen";
 import LoginScreen from "@/screens/Auth/LoginScreen";
 import RegisterScreen from "@/screens/Auth/RegisterScreen";
+import ForgotPasswordScreen from "@/screens/Auth/ForgotPasswordScreen";
+import VerifyResetCodeScreen from "@/screens/Auth/VerifyResetCodeScreen";
+import ResetPasswordScreen from "@/screens/Auth/ResetPasswordScreen";
 import UserProfileScreen from "@/screens/Profile/UserProfileScreen";
 import NotificationsScreen from "../screens/Notifications/NotificationsScreen";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
@@ -170,6 +173,31 @@ const AuthenticatedStack = () => {
           },
         }}
       />
+      {/* Password Reset Screens for authenticated users */}
+      <Stack.Screen 
+        name="ForgotPassword" 
+        component={ForgotPasswordScreen}
+        options={{ 
+          headerShown: false,
+          gestureEnabled: true 
+        }}
+      />
+      <Stack.Screen 
+        name="VerifyResetCode" 
+        component={VerifyResetCodeScreen}
+        options={{ 
+          headerShown: false,
+          gestureEnabled: true 
+        }}
+      />
+      <Stack.Screen 
+        name="ResetPassword" 
+        component={ResetPasswordScreen}
+        options={{ 
+          headerShown: false,
+          gestureEnabled: true 
+        }}
+      />
     </Stack.Navigator>
   );
 };
@@ -187,6 +215,9 @@ export default function MainNavigator() {
         <>
           <Stack.Screen name="Login" component={LoginScreen} />
           <Stack.Screen name="Register" component={RegisterScreen} />
+          <Stack.Screen name="ForgotPassword" component={ForgotPasswordScreen} />
+          <Stack.Screen name="VerifyResetCode" component={VerifyResetCodeScreen} />
+          <Stack.Screen name="ResetPassword" component={ResetPasswordScreen} />
         </>
       )}
     </Stack.Navigator>

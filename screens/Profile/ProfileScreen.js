@@ -83,6 +83,8 @@ const dispatch = useDispatch();
   const [bioLoading, setBioLoading] = useState(false);
   // Followers/Following modal state
   const [listModal, setListModal] = useState({ visible: false, type: null, data: [], loading: false });
+  // Menu state for profile options
+  const [menuVisible, setMenuVisible] = useState(false);
   const pagerRef = useRef(null);
 
   const BASE_URL = API_ENDPOINTS.BASE.replace('/api', ''); // Remove /api suffix for direct endpoint calls
@@ -363,6 +365,23 @@ const dispatch = useDispatch();
       ],
       { cancelable: true }
     );
+  };
+
+  const handleResetPassword = () => {
+    setMenuVisible(false);
+    navigation.navigate('ForgotPassword', { 
+      userEmail: user?.email,
+      isAuthenticated: true 
+    });
+  };
+
+  const handleMenuItemPress = (action) => {
+    if (action === 'resetPassword') {
+      handleResetPassword();
+    } else if (action === 'logout') {
+      handleLogout();
+    }
+    setMenuVisible(false);
   };
 
   // Carousel navigation functions
@@ -1026,10 +1045,10 @@ const dispatch = useDispatch();
         <View style={styles.topBar}>
           <Text style={styles.screenTitle}>Profile</Text>
           <TouchableOpacity 
-            style={styles.logoutButton} 
-            onPress={handleLogout}
+            style={styles.menuButton} 
+            onPress={() => setMenuVisible(true)}
           >
-            <Ionicons name="log-out-outline" size={18} color="#666" />
+            <Ionicons name="menu-outline" size={20} color="#666" />
           </TouchableOpacity>
         </View>
 
@@ -1548,6 +1567,40 @@ const dispatch = useDispatch();
           )}
         </View>
       </Modal>
+
+      {/* Menu Modal */}
+      <Modal
+        visible={menuVisible}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setMenuVisible(false)}
+      >
+        <TouchableOpacity 
+          style={styles.menuOverlay}
+          activeOpacity={1}
+          onPress={() => setMenuVisible(false)}
+        >
+          <View style={styles.menuContainer}>
+            <TouchableOpacity
+              style={styles.menuItem}
+              onPress={() => handleMenuItemPress('resetPassword')}
+            >
+              <Ionicons name="key-outline" size={20} color="#333" />
+              <Text style={styles.menuItemText}>Reset Password</Text>
+            </TouchableOpacity>
+            
+            <View style={styles.menuDivider} />
+            
+            <TouchableOpacity
+              style={styles.menuItem}
+              onPress={() => handleMenuItemPress('logout')}
+            >
+              <Ionicons name="log-out-outline" size={20} color="#e74c3c" />
+              <Text style={[styles.menuItemText, { color: '#e74c3c' }]}>Logout</Text>
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
+      </Modal>
     </View>
   );
 };
@@ -1586,10 +1639,51 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#333',
   },
-  logoutButton: {
+  menuButton: {
     padding: 6,
     borderRadius: 16,
     backgroundColor: '#f8f9fa',
+  },
+  
+  // Menu Modal Styles
+  menuOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-start',
+    alignItems: 'flex-end',
+    paddingTop: Platform.OS === 'ios' ? 90 : 70,
+    paddingRight: 16,
+  },
+  menuContainer: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    paddingVertical: 8,
+    minWidth: 180,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  menuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+  },
+  menuItemText: {
+    fontSize: 16,
+    color: '#333',
+    marginLeft: 12,
+    fontWeight: '500',
+  },
+  menuDivider: {
+    height: 1,
+    backgroundColor: '#e9ecef',
+    marginVertical: 4,
   },
   profileSection: {
     flexDirection: 'row',

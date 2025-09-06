@@ -19,6 +19,7 @@ import React, { useState } from "react";
 import { StatusBar } from "expo-status-bar";
 import Animated, { FadeInUp, FadeInDown } from "react-native-reanimated";
 import { useNavigation } from "@react-navigation/native";
+import { Ionicons } from '@expo/vector-icons';
 
 export default function RegisterScreen() {
   const navigation = useNavigation();
@@ -29,15 +30,37 @@ export default function RegisterScreen() {
   const [isLoading, setIsLoading] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [registeredEmail, setRegisteredEmail] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   
   // Email validation states
   const [emailError, setEmailError] = useState("");
   const [emailTouched, setEmailTouched] = useState(false);
 
+  // Password validation states
+  const [passwordError, setPasswordError] = useState("");
+  const [passwordTouched, setPasswordTouched] = useState(false);
+
   // Email validation function
   const validateEmail = (email) => {
     const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
     return emailRegex.test(email);
+  };
+
+  // Password validation function
+  const validatePassword = (password) => {
+    if (password.length < 8) {
+      return 'Password must be at least 8 characters long';
+    }
+    if (!/(?=.*[a-z])/.test(password)) {
+      return 'Password must contain at least one lowercase letter';
+    }
+    if (!/(?=.*[A-Z])/.test(password)) {
+      return 'Password must contain at least one uppercase letter';
+    }
+    if (!/(?=.*\d)/.test(password)) {
+      return 'Password must contain at least one number';
+    }
+    return null;
   };
 
   // Handle email input changes
@@ -54,6 +77,19 @@ export default function RegisterScreen() {
     }
   };
 
+  // Handle password input changes
+  const handlePasswordChange = (text) => {
+    setPassword(text);
+    setPasswordTouched(true);
+    
+    if (text === '') {
+      setPasswordError('Password is required');
+    } else {
+      const passwordValidationError = validatePassword(text);
+      setPasswordError(passwordValidationError || '');
+    }
+  };
+
   const handleRegister = async () => {
     if (!username || !email || !password) {
       Alert.alert("Error", "Please fill all fields");
@@ -63,6 +99,13 @@ export default function RegisterScreen() {
     // Validate email format
     if (!validateEmail(email)) {
       Alert.alert("Invalid Email", "Please enter a valid email address");
+      return;
+    }
+
+    // Validate password strength
+    const passwordValidationError = validatePassword(password);
+    if (passwordValidationError) {
+      Alert.alert("Invalid Password", passwordValidationError);
       return;
     }
 
@@ -211,16 +254,43 @@ export default function RegisterScreen() {
 
                   <Animated.View
                     entering={FadeInDown.duration(1000).delay(400).springify()}
-                    style={[styles.inputBox, { marginBottom: 12 }]}
+                    style={[
+                      styles.passwordContainer, 
+                      passwordError && passwordTouched ? styles.inputError : null,
+                      { marginBottom: 12 }
+                    ]}
                   >
                     <TextInput
+                      style={styles.passwordInput}
                       placeholder="Password"
                       placeholderTextColor={"gray"}
-                      secureTextEntry
+                      secureTextEntry={!showPassword}
                       value={password}
-                      onChangeText={setPassword}
+                      onChangeText={handlePasswordChange}
+                      autoCapitalize="none"
+                      autoCorrect={false}
                     />
+                    <TouchableOpacity
+                      style={styles.eyeButton}
+                      onPress={() => setShowPassword(!showPassword)}
+                    >
+                      <Ionicons 
+                        name={showPassword ? "eye-off" : "eye"} 
+                        size={20} 
+                        color="#9CA3AF" 
+                      />
+                    </TouchableOpacity>
                   </Animated.View>
+
+                  {/* Password validation error message */}
+                  {passwordError && passwordTouched && (
+                    <Animated.View
+                      entering={FadeInDown.duration(300).springify()}
+                      style={styles.errorContainer}
+                    >
+                      <Text style={styles.errorText}>{passwordError}</Text>
+                    </Animated.View>
+                  )}
 
                   <Animated.View
                     entering={FadeInDown.duration(1000).delay(600).springify()}
@@ -500,5 +570,22 @@ const styles = StyleSheet.create({
     fontSize: 12,
     textAlign: "left",
     marginLeft: 5,
+  },
+  
+  // Password container styles
+  passwordContainer: {
+    backgroundColor: "rgba(0,0,0,0.05)",
+    borderRadius: 16,
+    width: "100%",
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  passwordInput: {
+    flex: 1,
+    padding: 20,
+    fontSize: 16,
+  },
+  eyeButton: {
+    padding: 20,
   },
 });
