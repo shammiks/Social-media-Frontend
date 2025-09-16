@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef, useLayoutEffect, useCallback } from 'react';
+import React, { useEffect, useState, useRef, useLayoutEffect, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -58,14 +58,12 @@ const ChatScreen = ({ route, navigation }) => {
     );
   }
   
-  const dispatch = useDispatch();
-  const {
-    messages,
-    currentChat,
-    typingUsers,
-    sendingMessage
-  } = useSelector(state => state.chat);
+  const messages = useSelector(state => state.chat.messages);
+  const currentChat = useSelector(state => state.chat.currentChat);
+  const typingUsers = useSelector(state => state.chat.typingUsers);
+  const sendingMessage = useSelector(state => state.chat.sendingMessage);
   const { user } = useSelector(state => state.auth);
+  const dispatch = useDispatch();
   
   const [messageText, setMessageText] = useState('');
   const [isTyping, setIsTyping] = useState(false);
@@ -119,7 +117,6 @@ const ChatScreen = ({ route, navigation }) => {
       
       const result = await dispatch(sendMessage(payload)).unwrap();
       
-      flatListRef.current?.scrollToEnd({ animated: true });
     } catch (e) {
       Alert.alert('Send failed', e.message || 'Could not send media message');
     }
@@ -128,10 +125,18 @@ const ChatScreen = ({ route, navigation }) => {
   // Filter out null/undefined messages to prevent rendering errors
   const rawMessages = messages[chat?.id] || [];
   const chatMessages = rawMessages.filter(message => message != null);
+
+  useEffect(() => {
+    // Force component re-render when messages change
+    console.log('🟦 ChatScreen: Messages array changed, length:', chatMessages.length);
+    console.log('🟦 ChatScreen: First message:', chatMessages[0]?.content);
+    console.log('🟦 ChatScreen: Last message:', chatMessages[chatMessages.length - 1]?.content);
+  }, [chatMessages]);
   
   // Only show typing indicator if another user is typing
   const chatTypingUsersRaw = typingUsers[chat?.id] || [];
   const chatTypingUsers = chatTypingUsersRaw.filter(uid => uid && uid !== user?.id);
+  const showTypingIndicator = chatTypingUsers.length > 0;
 
   // Send typing indicator to backend
   const sendTypingIndicator = useCallback((typing) => {
@@ -150,56 +155,23 @@ const ChatScreen = ({ route, navigation }) => {
 
   // Helper function to check if a message belongs to the current user
   const isMessageMine = (message) => {
-    // Null check for message
-    if (!message) {
-      return false;
-    }
-    
-    const currentUserId = user?.id;
-    
-    if (!currentUserId) {
-      return false;
-    }
-    
-    // Check various possible sender ID fields
+    if (!message || !user) return false;
+    const currentUserId = user.id?.toString();
+    // Check all possible sender/user fields
     const possibleSenderIds = [
       message.senderId,
-      message.userId, 
+      message.userId,
       message.authorId,
       message.sender?.id,
       message.user?.id,
       message.author?.id
-    ];
-    
-    // Check if any sender ID matches current user (handle both string and number comparisons)
-    for (const senderId of possibleSenderIds) {
-      if (senderId == null) continue;
-      
-      const senderIdStr = String(senderId);
-      const currentUserIdStr = String(currentUserId);
-      
-      if (senderIdStr === currentUserIdStr) {
-        return true;
-      }
-    }
-    
-    // Fallback checks
-    // Check by display name
+    ].map(id => id?.toString()).filter(Boolean);
+    if (possibleSenderIds.includes(currentUserId)) return true;
+    // Check by username/displayName/email
     const senderName = message.senderName || message.sender?.displayName || message.sender?.name;
-    if (senderName === 'You') {
-      return true;
-    }
-    
-    if (senderName && (senderName === user?.username || senderName === user?.displayName)) {
-      return true;
-    }
-    
-    // Check by email
+    if (senderName && (senderName === user.username || senderName === user.displayName)) return true;
     const senderEmail = message.senderEmail || message.sender?.email;
-    if (senderEmail && senderEmail === user?.email) {
-      return true;
-    }
-    
+    if (senderEmail && senderEmail === user.email) return true;
     return false;
   };
 
@@ -296,7 +268,8 @@ const ChatScreen = ({ route, navigation }) => {
     try {
       await API.post(
         `${API_ENDPOINTS.BASE}/messages/${messageId}/read`,
-        {}
+        {},
+        { headers: { Authorization: `Bearer ${token}` } }
       );
     } catch (error) {
       console.error('Mark as read error:', error);
@@ -335,48 +308,40 @@ const ChatScreen = ({ route, navigation }) => {
     });
   }, [chat, navigation, user, targetUser]);
 
+
   useEffect(() => {
-    dispatch(setCurrentChat(chat));
-    dispatch(loadChatMessages({ chatId: chat.id }));
+  dispatch(setCurrentChat(chat));
+  dispatch(loadChatMessages({ chatId: chat.id }));
 
-    // Set up WebSocket connection - ensure connection is active
-    WebSocketService.setDispatch(dispatch);
-    WebSocketService.setCurrentUserId(user?.id); // Set numeric user ID
+  // REMOVED: Don't initialize WebSocket here - it's handled globally in App.js
+  // Just ensure we join this specific chat
+  if (WebSocketService.isConnected) {
+    console.log('ChatScreen: WebSocket already connected, joining chat:', chat.id);
+    WebSocketService.joinChat(chat.id);
+  } else {
+    console.log('ChatScreen: WebSocket not connected, will join when it connects');
+    // WebSocket will auto-subscribe when it connects (handled in WebSocketService)
+  }
+
+     return () => {
+    // Clean up when leaving chat
+    console.log('ChatScreen: Leaving chat:', chat.id);
+    WebSocketService.leaveChat(chat.id);
+    dispatch(setCurrentChat(null));
     
-    // Make sure WebSocket is connected before subscribing
-    if (!WebSocketService.isConnected) {
-      WebSocketService.connect()
-        .then(() => {
-          WebSocketService.subscribeToChat(chat.id, dispatch);
-          WebSocketService.joinChat(chat.id);
-        })
-        .catch((error) => {
-          console.error('ChatScreen: Failed to connect WebSocket:', error);
-        });
-    } else {
-      WebSocketService.subscribeToChat(chat.id, dispatch);
-      WebSocketService.joinChat(chat.id);
+    // Clear typing timeout
+    if (typingTimeoutRef.current) {
+      clearTimeout(typingTimeoutRef.current);
+      typingTimeoutRef.current = null;
     }
-
-    return () => {
-      // Clean up when leaving chat
-      WebSocketService.leaveChat(chat.id);
-      WebSocketService.unsubscribeFromChat(chat.id);
-      dispatch(setCurrentChat(null));
-      
-      // Clear typing timeout
-      if (typingTimeoutRef.current) {
-        clearTimeout(typingTimeoutRef.current);
-        typingTimeoutRef.current = null;
-      }
-      
-      // Send stop typing indicator
-      if (isTyping) {
-        sendTypingIndicator(false);
-        setIsTyping(false);
-      }
-    };
-  }, [chat, dispatch, user?.id]);
+    
+    // Send stop typing indicator
+    if (isTyping) {
+      WebSocketService.sendTypingIndicator(chat.id, false);
+      setIsTyping(false);
+    }
+  };
+}, [chat, dispatch]);
 
   // Mark messages as read when the RECEIVER views them (not when sender sees own messages)
   useEffect(() => {
@@ -412,51 +377,45 @@ const ChatScreen = ({ route, navigation }) => {
     }
   }, [chat?.id, user?.id, dispatch]);
 
-  // Ensure WebSocket connection when screen is focused
-  useFocusEffect(
-    React.useCallback(() => {
-      // Re-establish WebSocket connection when screen is focused
-      WebSocketService.setDispatch(dispatch);
-      WebSocketService.setCurrentUserId(user?.id); // Set numeric user ID
-      
-      if (!WebSocketService.isConnected) {
-        console.log('ChatScreen focused: WebSocket not connected, reconnecting...');
-        WebSocketService.connect()
-          .then(() => {
-            console.log('ChatScreen: WebSocket connected successfully');
-            WebSocketService.subscribeToChat(chat.id, dispatch);
-            WebSocketService.joinChat(chat.id);
-          })
-          .catch((error) => {
-            console.error('ChatScreen: Failed to connect WebSocket:', error);
-          });
-      } else {
-        console.log('ChatScreen: WebSocket already connected');
-        // Ensure we're subscribed to this chat
-        WebSocketService.subscribeToChat(chat.id, dispatch);
-        WebSocketService.joinChat(chat.id);
-      }
-    }, [chat.id, dispatch, user?.id])
-  );
-
-  // Auto-scroll to bottom when new messages arrive
+  // Monitor messages for debugging (limited to prevent infinite loops)
   useEffect(() => {
     if (chatMessages.length > 0) {
-      setTimeout(() => {
-        flatListRef.current?.scrollToEnd({ animated: true });
-      }, 100);
+      console.log('ChatScreen: Messages loaded for chat', chat.id, '- Count:', chatMessages.length);
     }
-  }, [chatMessages.length]);
+  }, [chatMessages.length, chat.id]);
 
+
+  // Ensure WebSocket connection when screen is focused
+  useFocusEffect(
+  React.useCallback(() => {
+    console.log('ChatScreen focused for chat:', chat.id);
+    
+    // Just ensure we're joined to this chat if WebSocket is connected
+    if (WebSocketService.isConnected) {
+      WebSocketService.joinChat(chat.id);
+    }
+    
+    return () => {
+      console.log('ChatScreen unfocused for chat:', chat.id);
+      WebSocketService.leaveChat(chat.id);
+    };
+  }, [chat.id])
+);
+  // Auto-scroll to bottom when new messages arrive
+  useEffect(() => {
+  if (chatMessages.length > 0) {
+    setTimeout(() => {
+      // Since messages are stored newest-first, just scroll to the top
+      flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
+    }, 100);
+  }
+}, [chatMessages.length]);
   // Keyboard handling for better input visibility
   useEffect(() => {
     const keyboardDidShowListener = Keyboard.addListener('keyboardDidShow', (e) => {
       setKeyboardHeight(e.endCoordinates.height);
       setShowEmojiPicker(false); // Close emoji picker when keyboard shows
       // Auto scroll to bottom when keyboard shows
-      setTimeout(() => {
-        flatListRef.current?.scrollToEnd({ animated: true });
-      }, 100);
     });
 
     const keyboardDidHideListener = Keyboard.addListener('keyboardDidHide', () => {
@@ -470,29 +429,34 @@ const ChatScreen = ({ route, navigation }) => {
   }, []);
 
   const handleSendMessage = async () => {
-    if (messageText.trim()) {
-      const content = messageText.trim();
-      setMessageText('');
+  if (messageText.trim()) {
+    const content = messageText.trim();
+    setMessageText('');
+    
+    console.log('ChatScreen: Sending message:', { chatId: chat.id, content });
+    
+    try {
+      const result = await dispatch(sendMessage({ 
+        chatId: chat.id, 
+        content 
+      })).unwrap();
       
-      try {
-        const result = await dispatch(sendMessage({ 
-          chatId: chat.id, 
-          content 
-        })).unwrap();
-        
-        // Stop typing indicator
-        if (isTyping) {
-          setIsTyping(false);
-          WebSocketService.sendTypingIndicator(chat.id, false);
-        }
-        
-        flatListRef.current?.scrollToEnd({ animated: true });
-      } catch (error) {
-        Alert.alert('Error', 'Failed to send message');
-        setMessageText(content); // Restore message on error
+      console.log('ChatScreen: Message sent successfully:', result);
+      
+      // Stop typing indicator
+      if (isTyping) {
+        setIsTyping(false);
+        WebSocketService.sendTypingIndicator(chat.id, false);
       }
+      
+      flatListRef.current?.scrollToEnd({ animated: true });
+    } catch (error) {
+      console.error('ChatScreen: Failed to send message:', error);
+      Alert.alert('Error', 'Failed to send message');
+      setMessageText(content); // Restore message on error
     }
-  };
+  }
+};
 
   const handleTextChange = (text) => {
     setMessageText(text);
@@ -535,12 +499,10 @@ const ChatScreen = ({ route, navigation }) => {
   };
 
   const renderTypingIndicator = () => {
-    if (chatTypingUsers.length === 0) return null;
-
+    if (!showTypingIndicator) return null;
     const typingText = chatTypingUsers.length === 1
-      ? `${chatTypingUsers[0].displayName} is typing...`
+      ? `${chatTypingUsers[0].displayName || 'Someone'} is typing...`
       : `${chatTypingUsers.length} people are typing...`;
-
     return (
       <View style={styles.typingIndicator}>
         <Text style={styles.typingText}>{typingText}</Text>
@@ -981,18 +943,18 @@ const ChatScreen = ({ route, navigation }) => {
           activeOpacity={1}
           onPress={() => setShowEmojiPicker(false)}
         >
-          <FlatList
-            ref={flatListRef}
-            data={chatMessages}
-            renderItem={renderMessage}
-            keyExtractor={(item) => item.id.toString()}
-            style={styles.messagesList}
-            contentContainerStyle={styles.messagesContent}
-            showsVerticalScrollIndicator={false}
-            keyboardShouldPersistTaps="handled"
-            onContentSizeChange={() => flatListRef.current?.scrollToEnd()}
-          />
-          
+        <FlatList
+        ref={flatListRef}
+        data={chatMessages}
+        renderItem={renderMessage}
+        keyExtractor={(item) => item.id.toString()}
+        extraData={chatMessages} // Force re-render when chatMessages array changes (not just length)
+        style={styles.messagesList}
+        contentContainerStyle={styles.messagesContent}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+        onContentSizeChange={() => flatListRef.current?.scrollToEnd()}
+      />
           {renderTypingIndicator()}
         </TouchableOpacity>
         

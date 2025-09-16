@@ -125,47 +125,72 @@ const chatSlice = createSlice({
         state.unreadCounts[action.payload.id] = 0;
       }
     },
-    addMessageViaSocket: (state, action) => {
-      const { chatId, message } = action.payload;
-      console.log('Redux: addMessageViaSocket called with chatId:', chatId, 'message:', message);
+   // In your ChatSlice.js, update the addMessageViaSocket reducer:
+
+// In your ChatSlice.js, update the addMessageViaSocket reducer with debugging:
+
+addMessageViaSocket: (state, action) => {
+  const { chatId, message } = action.payload;
+  console.log('🔵 Redux: addMessageViaSocket called with chatId:', chatId);
+  console.log('🔵 Redux: Message data:', JSON.stringify(message, null, 2));
+  console.log('🔵 Redux: Current messages for chat', chatId, ':', state.messages[chatId]?.length || 0);
+  
+  // Null check for message
+  if (!message) {
+    console.warn('🟡 Redux: Received null message, ignoring');
+    return;
+  }
+  
+  if (!state.messages[chatId]) {
+    console.log('🔵 Redux: Creating new messages array for chat:', chatId);
+    state.messages[chatId] = [];
+  }
+  
+  // Check if message already exists
+  const exists = state.messages[chatId].some(msg => msg && msg.id === message.id);
+  console.log('🔵 Redux: Message exists check - ID:', message.id, 'Exists:', exists);
+  
+  if (!exists) {
+    console.log('🔵 Redux: Adding new message via socket to chat:', chatId);
+    console.log('🔵 Redux: Message content:', message.content);
+    console.log('🔵 Redux: Messages array before add:', state.messages[chatId].length);
+    
+    // CRITICAL: Add message to the BEGINNING of array (newest first)
+    // This matches how messages are stored after loadChatMessages
+    state.messages[chatId].unshift(message);
+    
+    console.log('🔵 Redux: Messages array after add:', state.messages[chatId].length);
+    console.log('🔵 Redux: New message at index 0:', state.messages[chatId][0]?.content);
+    
+    // Update chat's last message
+    const chatIndex = state.chats.findIndex(chat => chat.id === chatId);
+    if (chatIndex !== -1) {
+      console.log('🔵 Redux: Updating chat last message for chat index:', chatIndex);
+      state.chats[chatIndex].lastMessage = message;
+      state.chats[chatIndex].lastMessageAt = message.createdAt;
       
-      // Null check for message
-      if (!message) {
-        console.warn('addMessageViaSocket: Received null message, ignoring');
-        return;
-      }
-      
-      if (!state.messages[chatId]) {
-        state.messages[chatId] = [];
-      }
-      
-      // Check if message already exists (avoid duplicates)
-      const exists = state.messages[chatId].some(msg => msg && msg.id === message.id);
-      if (!exists) {
-        console.log('Redux: Adding new message via socket to chat:', chatId);
-        // Keep the message as is - WebSocket messages should have proper sender info
-        // If senderId is missing, it's likely from another user (since WebSocket typically sends others' messages)
-        state.messages[chatId].push(message);
-        
-        // Update chat's last message
-        const chatIndex = state.chats.findIndex(chat => chat.id === chatId);
-        if (chatIndex !== -1) {
-          state.chats[chatIndex].lastMessage = message;
-          state.chats[chatIndex].lastMessageAt = message.createdAt;
-          
-          // Move chat to top of list
-          const [updatedChat] = state.chats.splice(chatIndex, 1);
-          state.chats.unshift(updatedChat);
-        }
-        
-        // Increment unread count if not current chat
-        if (!state.currentChat || state.currentChat.id !== chatId) {
-          state.unreadCounts[chatId] = (state.unreadCounts[chatId] || 0) + 1;
-        }
-      } else {
-        console.log('Redux: Message already exists, skipping duplicate');
-      }
-    },
+      // Move chat to top of list
+      const [updatedChat] = state.chats.splice(chatIndex, 1);
+      state.chats.unshift(updatedChat);
+      console.log('🔵 Redux: Moved chat to top of list');
+    } else {
+      console.log('🟡 Redux: Chat not found in chats array for updating last message');
+    }
+    
+    // Increment unread count if not current chat
+    if (!state.currentChat || state.currentChat.id !== chatId) {
+      const oldCount = state.unreadCounts[chatId] || 0;
+      state.unreadCounts[chatId] = oldCount + 1;
+      console.log('🔵 Redux: Updated unread count from', oldCount, 'to', state.unreadCounts[chatId]);
+    } else {
+      console.log('🔵 Redux: Not updating unread count - this is current chat');
+    }
+    
+    console.log('🟢 Redux: Message successfully added via socket');
+  } else {
+    console.log('🟡 Redux: Message already exists, skipping duplicate');
+  }
+},
     updateMessageViaSocket: (state, action) => {
       const { chatId, messageId, updates } = action.payload;
       if (state.messages[chatId]) {

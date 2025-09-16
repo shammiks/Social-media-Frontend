@@ -32,7 +32,11 @@ class NotificationWebSocketService {
 
     try {
       // Create STOMP client with SockJS
-      const wsUrl = API_ENDPOINTS.BASE.replace('/api', '/ws/notifications');
+      const baseWsUrl = API_ENDPOINTS.BASE.replace('/api', '/ws/notifications');
+      // Include JWT token in URL query parameter as required by WebSocketHandshakeInterceptor
+      const wsUrl = `${baseWsUrl}?token=Bearer_${token}`;
+      
+      console.log('🔗 NotificationWebSocket connecting to:', `${baseWsUrl}?token=Bearer_${token.substring(0, 20)}...`);
       
       this.client = new Client({
         webSocketFactory: () => {

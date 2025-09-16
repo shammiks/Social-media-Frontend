@@ -2,7 +2,6 @@ import React from "react";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import ChatScreen from "../screens/Chat/ChatScreen";
 import ChatListScreen from "../screens/Chat/ChatListScreen";
-import CreateChatScreen from "../screens/Chat/CreateChatScreen"; // New screen to add
 import FeedScreen from "@/screens/Home/FeedScreen";
 import CreatePostScreen from "@/screens/Post/CreatePostScreen";
 import PostDetailScreen from "@/screens/Post/PostDetailScreen";
@@ -148,22 +147,6 @@ const AuthenticatedStack = () => {
         options={{
           headerShown: true,
           title: 'Chat',
-          headerStyle: {
-            backgroundColor: '#007AFF',
-          },
-          headerTintColor: '#fff',
-          headerTitleStyle: {
-            fontWeight: 'bold',
-          },
-        }}
-      />
-      <Stack.Screen 
-        name="CreateChatScreen" 
-        component={CreateChatScreen}
-        options={{
-          headerShown: true,
-          title: 'New Chat',
-          presentation: 'modal',
           headerStyle: {
             backgroundColor: '#007AFF',
           },

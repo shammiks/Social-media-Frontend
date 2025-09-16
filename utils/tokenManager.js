@@ -1,5 +1,5 @@
 // utils/tokenManager.js - SIMPLIFIED VERSION
-// Remove refresh logic since it's now handled by API interceptor
+// Token refresh is handled by App.js, this just provides token access
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export class TokenManager {
@@ -51,18 +51,40 @@ export class TokenManager {
     }
   }
 
+  // FIXED: Just return the stored token - App.js handles refresh
+  static async getValidToken() {
+    try {
+      console.log('🎫 TokenManager - Getting valid token...');
+      
+      const token = await AsyncStorage.getItem('authToken');
+      const refreshToken = await AsyncStorage.getItem('refreshToken');
+      
+      if (!token || !refreshToken) {
+        console.log('❌ TokenManager - No tokens found in storage');
+        throw new Error('No valid authentication token available');
+      }
+
+      // Don't check expiry here - App.js handles refresh at startup
+      // If we reach here, assume token is valid or App.js will handle refresh
+      console.log('✅ TokenManager - Valid token retrieved');
+      return token;
+    } catch (error) {
+      console.error('❌ TokenManager - Error getting valid token:', error);
+      throw error;
+    }
+  }
+
   static async hasValidTokens() {
     try {
       const token = await AsyncStorage.getItem('authToken');
       const refreshToken = await AsyncStorage.getItem('refreshToken');
-      const isExpired = await this.isTokenExpired();
       
-      const hasValidTokens = !!(token && refreshToken && !isExpired);
+      // Just check if tokens exist - don't validate expiry since App.js handles that
+      const hasValidTokens = !!(token && refreshToken);
       
       console.log('✅ TokenManager - Token validation:', {
         hasAccessToken: !!token,
         hasRefreshToken: !!refreshToken,
-        isExpired: isExpired,
         hasValidTokens: hasValidTokens
       });
       
@@ -101,7 +123,7 @@ export class TokenManager {
     }
   }
 
-  // Store tokens after login/refresh (called by login component or API)
+  // Store tokens after login/refresh (called by login component or App.js)
   static async storeTokens(accessToken, refreshToken, expiresIn) {
     try {
       const expiryTime = Date.now() + (expiresIn * 1000);

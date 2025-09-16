@@ -38,26 +38,6 @@ const ChatListScreen = ({ navigation }) => {
     return () => clearTimeout(timer);
   }, [dispatch]);
 
-  // WebSocket setup for real-time updates
-  useEffect(() => {
-    if (user?.id) {
-      // Initialize WebSocket connection
-      WebSocketService.setDispatch(dispatch);
-      WebSocketService.setCurrentUserId(user.id); // Set numeric user ID
-      WebSocketService.connect()
-        .then(() => {
-          console.log('ChatListScreen: WebSocket connected successfully');
-        })
-        .catch((error) => {
-          console.error('ChatListScreen: Failed to connect WebSocket:', error);
-        });
-    }
-
-    // Don't disconnect on unmount since other screens might be using WebSocket
-    return () => {
-      // Just clean up dispatch reference if needed
-    };
-  }, [dispatch, user?.id]);
 
   // Clear search when navigating away from screen
   useEffect(() => {
@@ -71,14 +51,15 @@ const ChatListScreen = ({ navigation }) => {
   // Refresh chats when screen comes into focus (like when coming back from ChatScreen)
   useFocusEffect(
     useCallback(() => {
-      // Clear search query when screen comes into focus
+      console.log('ChatListScreen: Screen focused - clearing search and refreshing if needed');
       setSearchQuery('');
       
-      // Only refresh if not already loading to prevent duplicate requests
-      if (!isLoading) {
+      // Only refresh if we don't have chats loaded or if there was an error
+      if (chats.length === 0 && !isLoading) {
+        console.log('ChatListScreen: No chats loaded, refreshing');
         dispatch(loadChats());
       }
-    }, [dispatch])
+    }, [dispatch, chats.length]) // Remove isLoading from dependencies
   );
 
   useEffect(() => {
@@ -450,5 +431,3 @@ const styles = StyleSheet.create({
   },
 })
 export default ChatListScreen;
-
-

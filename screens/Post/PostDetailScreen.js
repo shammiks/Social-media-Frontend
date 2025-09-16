@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react';
-// ...existing code...
 import {
   View,
   Text,
