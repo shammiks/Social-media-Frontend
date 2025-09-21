@@ -83,7 +83,7 @@ const VerifyResetCodeScreen = ({ route, navigation }) => {
     setIsLoading(true);
 
     try {
-      const response = await fetch("http://192.168.1.5:8080/api/auth/verify-reset-code", {
+      const response = await fetch("http://192.168.1.5:8081/api/auth/verify-reset-code", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ 
@@ -134,7 +134,7 @@ const VerifyResetCodeScreen = ({ route, navigation }) => {
     setResendLoading(true);
 
     try {
-      const response = await fetch("http://192.168.1.5:8080/api/auth/request-password-reset", {
+      const response = await fetch("http://192.168.1.5:8081/api/auth/request-password-reset", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: email }),

@@ -2,17 +2,15 @@ import React from "react";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import ChatScreen from "../screens/Chat/ChatScreen";
 import ChatListScreen from "../screens/Chat/ChatListScreen";
-import FeedScreen from "@/screens/Home/FeedScreen";
-import CreatePostScreen from "@/screens/Post/CreatePostScreen";
-import PostDetailScreen from "@/screens/Post/PostDetailScreen";
-import ProfileScreen from "@/screens/Profile/ProfileScreen";
-import LoginScreen from "@/screens/Auth/LoginScreen";
-import RegisterScreen from "@/screens/Auth/RegisterScreen";
-import ForgotPasswordScreen from "@/screens/Auth/ForgotPasswordScreen";
-import VerifyResetCodeScreen from "@/screens/Auth/VerifyResetCodeScreen";
-import ResetPasswordScreen from "@/screens/Auth/ResetPasswordScreen";
-import UserProfileScreen from "@/screens/Profile/UserProfileScreen";
+import FeedScreen from "../screens/Home/FeedScreen";
+import CreatePostScreen from "../screens/Post/CreatePostScreen";
+import PostDetailScreen from "../screens/Post/PostDetailScreen";
+import ProfileScreen from "../screens/Profile/ProfileScreen";
+import LoginScreen from "../screens/Auth/LoginScreen";
+import RegisterScreen from "../screens/Auth/RegisterScreen";
+import UserProfileScreen from "../screens/Profile/UserProfileScreen";
 import NotificationsScreen from "../screens/Notifications/NotificationsScreen";
+import AdminScreen from "../screens/Admin/AdminScreen";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { Ionicons } from "@expo/vector-icons";
 import { useSelector } from "react-redux";
@@ -51,7 +49,69 @@ const NotificationBadge = ({ count }) => {
   );
 };
 
-const BottomTabNavigator = () => {
+// Admin Bottom Tab Navigator - Only Admin and Notifications screens
+const AdminBottomTabNavigator = () => {
+  const { unreadCount } = useSelector(state => state.notifications);
+
+  return (
+    <Tab.Navigator
+      screenOptions={({ route }) => ({
+        tabBarIcon: ({ focused, color, size }) => {
+          let iconName;
+
+          if (route.name === "Admin") {
+            iconName = focused ? "shield" : "shield-outline";
+          } else if (route.name === "Notifications") {
+            iconName = focused ? "notifications" : "notifications-outline";
+            // Return icon with notification badge
+            return (
+              <View style={{ position: 'relative' }}>
+                <Ionicons name={iconName} size={size} color={color} />
+                <NotificationBadge count={unreadCount} />
+              </View>
+            );
+          }
+
+          return <Ionicons name={iconName} size={size} color={color} />;
+        },
+        tabBarLabelStyle: {
+          fontSize: 14,
+          fontWeight: "600",
+        },
+        tabBarActiveTintColor: "#007AFF",
+        tabBarInactiveTintColor: "gray",
+        tabBarStyle: {
+          backgroundColor: "#fff",
+          paddingBottom: 5,
+          paddingTop: 5,
+          height: 80,
+          borderTopWidth: 2,
+          elevation: 10,
+          borderTopColor: "#dcdcdc",
+        },
+        headerShown: false,
+      })}
+    >
+      <Tab.Screen 
+        name="Admin" 
+        component={AdminScreen}
+        options={{
+          tabBarLabel: 'Admin Panel',
+        }}
+      />
+      <Tab.Screen 
+        name="Notifications" 
+        component={NotificationsScreen}
+        options={{
+          tabBarLabel: 'Notifications',
+        }}
+      />
+    </Tab.Navigator>
+  );
+};
+
+// Regular User Bottom Tab Navigator - All screens except Admin
+const RegularBottomTabNavigator = () => {
   const { unreadCount } = useSelector(state => state.notifications);
 
   return (
@@ -99,15 +159,53 @@ const BottomTabNavigator = () => {
         headerShown: false,
       })}
     >
-  <Tab.Screen name="Feed" component={FeedScreen} />
-  <Tab.Screen name="Chat" component={ChatListScreen} />
-  <Tab.Screen name="Post" component={CreatePostScreen} />
-  <Tab.Screen name="Profile" component={ProfileScreen} />
+      <Tab.Screen name="Feed" component={FeedScreen} />
+      <Tab.Screen name="Chat" component={ChatListScreen} />
+      <Tab.Screen name="Post" component={CreatePostScreen} />
+      <Tab.Screen name="Profile" component={ProfileScreen} />
     </Tab.Navigator>
   );
 };
 
-const AuthenticatedStack = () => {
+// Main Bottom Tab Navigator that chooses between admin and regular based on user role
+const BottomTabNavigator = () => {
+  const { user } = useSelector(state => state.auth);
+
+  // Debug logging for user admin status
+  console.log('🔍 MainNavigator - User object:', user);
+  console.log('🔍 MainNavigator - User isAdmin:', user?.isAdmin);
+  console.log('🔍 MainNavigator - User keys:', user ? Object.keys(user) : 'null');
+
+  // Return different tab navigators based on user role
+  if (user?.isAdmin) {
+    return <AdminBottomTabNavigator />;
+  } else {
+    return <RegularBottomTabNavigator />;
+  }
+};
+
+// Stack navigator for Admin users - only allows access to UserProfile and limited screens
+const AdminAuthenticatedStack = () => {
+  const Stack = createNativeStackNavigator();
+  
+  return (
+    <Stack.Navigator screenOptions={{ headerShown: false }}>
+      <Stack.Screen name="MainTabs" component={BottomTabNavigator} />
+      <Stack.Screen 
+        name="ShowProfile" 
+        component={UserProfileScreen}
+        options={{ 
+          presentation: 'modal',
+          gestureEnabled: true 
+        }}
+      />
+      {/* Admin can access notifications through the tab navigator */}
+    </Stack.Navigator>
+  );
+};
+
+// Stack navigator for Regular users - full access to all screens
+const RegularAuthenticatedStack = () => {
   const Stack = createNativeStackNavigator();
   
   return (
@@ -129,7 +227,6 @@ const AuthenticatedStack = () => {
           headerShown: false,
           gestureEnabled: true 
         }}
-        
       />
       <Stack.Screen 
         name="Notifications" 
@@ -138,7 +235,6 @@ const AuthenticatedStack = () => {
           headerShown: false,
           gestureEnabled: true 
         }}
-        
       />
       {/* Add Chat-related screens */}
       <Stack.Screen 
@@ -156,33 +252,20 @@ const AuthenticatedStack = () => {
           },
         }}
       />
-      {/* Password Reset Screens for authenticated users */}
-      <Stack.Screen 
-        name="ForgotPassword" 
-        component={ForgotPasswordScreen}
-        options={{ 
-          headerShown: false,
-          gestureEnabled: true 
-        }}
-      />
-      <Stack.Screen 
-        name="VerifyResetCode" 
-        component={VerifyResetCodeScreen}
-        options={{ 
-          headerShown: false,
-          gestureEnabled: true 
-        }}
-      />
-      <Stack.Screen 
-        name="ResetPassword" 
-        component={ResetPasswordScreen}
-        options={{ 
-          headerShown: false,
-          gestureEnabled: true 
-        }}
-      />
     </Stack.Navigator>
   );
+};
+
+// Main Authenticated Stack that chooses between admin and regular based on user role
+const AuthenticatedStack = () => {
+  const { user } = useSelector(state => state.auth);
+  
+  // Return different stack navigators based on user role
+  if (user?.isAdmin) {
+    return <AdminAuthenticatedStack />;
+  } else {
+    return <RegularAuthenticatedStack />;
+  }
 };
 
 export default function MainNavigator() {
@@ -198,9 +281,6 @@ export default function MainNavigator() {
         <>
           <Stack.Screen name="Login" component={LoginScreen} />
           <Stack.Screen name="Register" component={RegisterScreen} />
-          <Stack.Screen name="ForgotPassword" component={ForgotPasswordScreen} />
-          <Stack.Screen name="VerifyResetCode" component={VerifyResetCodeScreen} />
-          <Stack.Screen name="ResetPassword" component={ResetPasswordScreen} />
         </>
       )}
     </Stack.Navigator>

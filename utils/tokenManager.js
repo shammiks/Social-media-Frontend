@@ -102,7 +102,7 @@ export class TokenManager {
       if (refreshToken) {
         // Call logout endpoint to revoke refresh token
         try {
-          await fetch('http://192.168.1.5:8080/api/auth/logout', {
+          await fetch('http://192.168.1.5:8081/api/auth/logout', {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',

@@ -3,7 +3,7 @@ import axios from "axios";
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const API = axios.create({
-  baseURL: "http://192.168.1.5:8080/api",
+  baseURL: "http://192.168.1.5:8081/api",
 });
 
 // Global refresh management to prevent race conditions
@@ -43,7 +43,7 @@ const refreshTokens = async () => {
       
       // Create a new axios instance to avoid interceptor loops
       const refreshAPI = axios.create({
-        baseURL: "http://192.168.1.5:8080/api",
+        baseURL: "http://192.168.1.5:8081/api",
         timeout: 15000, // 15 second timeout
       });
 

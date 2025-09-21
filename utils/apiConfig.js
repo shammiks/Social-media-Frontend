@@ -2,8 +2,8 @@
 // Centralized API configuration to avoid URL mismatches
 
 const API_BASE_IP = '192.168.1.5'; // Updated to current actual IP address
-const API_PORT = '8080';
-const API_BASE_URL = `http://${API_BASE_IP}:${API_PORT}/api`;
+const API_PORT = '8081';
+export const API_BASE_URL = `http://${API_BASE_IP}:${API_PORT}/api`;
 
 export const API_ENDPOINTS = {
   BASE: API_BASE_URL,

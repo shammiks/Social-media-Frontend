@@ -316,7 +316,7 @@ const PostDetailScreen = ({ route, navigation }) => {
             const prependBase = (url) => {
               if (!url) return null;
               if (url.startsWith('http')) return url;
-              return `http://192.168.1.5:8080${url}`;
+              return `http://192.168.1.5:8081${url}`;
             };
             // Collect all media into an array for the carousel
             const mediaItems = [];

@@ -107,7 +107,7 @@ const navigation = useNavigation();
     setIsLoading(true);
 
     try {
-      const response = await fetch("http://192.168.1.5:8080/api/auth/login", {
+      const response = await fetch("http://192.168.1.5:8081/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password }),
@@ -130,13 +130,46 @@ const navigation = useNavigation();
         // Set the auth token for ChatAPI
         await ChatAPI.setAuthToken(accessToken);
         
-        // Dispatch the login success action with new structure
-        dispatch(loginSuccess({
-          accessToken: accessToken,
-          refreshToken: refreshToken,
-          expiresIn: expiresIn,
-          user: user,
-        }));
+        // Fetch complete user profile to ensure we have isAdmin field
+        try {
+          const meResponse = await fetch("http://192.168.1.5:8081/api/auth/me", {
+            method: "GET",
+            headers: { 
+              "Content-Type": "application/json",
+              "Authorization": `Bearer ${accessToken}`
+            },
+          });
+          
+          if (meResponse.ok) {
+            const completeUser = await meResponse.json();
+            console.log('Complete user profile from /me:', completeUser);
+            
+            // Dispatch with complete user profile
+            dispatch(loginSuccess({
+              accessToken: accessToken,
+              refreshToken: refreshToken,
+              expiresIn: expiresIn,
+              user: completeUser,
+            }));
+          } else {
+            // Fallback to original user data if /me fails
+            dispatch(loginSuccess({
+              accessToken: accessToken,
+              refreshToken: refreshToken,
+              expiresIn: expiresIn,
+              user: user,
+            }));
+          }
+        } catch (error) {
+          console.error('Failed to fetch complete user profile:', error);
+          // Fallback to original user data
+          dispatch(loginSuccess({
+            accessToken: accessToken,
+            refreshToken: refreshToken,
+            expiresIn: expiresIn,
+            user: user,
+          }));
+        }
 
         // Reset and connect WebSocket
         WebSocketService.resetConnection();

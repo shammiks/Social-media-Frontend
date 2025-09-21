@@ -1,7 +1,7 @@
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
 import API from '../utils/api';
 
-const BASE_URL = 'http://192.168.1.5:8080';
+const BASE_URL = 'http://192.168.1.5:8081';
 
 // Async thunk to fetch bookmarked posts
 export const fetchBookmarkedPosts = createAsyncThunk(

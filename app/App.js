@@ -172,11 +172,29 @@ const AuthLoader = () => {
         
         if (token && expiry > now) {
           console.log('App: Token is valid, restoring authentication');
+          
+          // Always fetch fresh user data to ensure admin status is up to date
+          let userData = user ? JSON.parse(user) : null;
+          try {
+            API.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+            console.log('App: Fetching fresh user profile to check admin status...');
+            const userResponse = await API.get('/auth/me');
+            userData = userResponse.data;
+            console.log('App: Fresh user profile fetched:', userData);
+            console.log('App: User isAdmin status:', userData?.isAdmin);
+            
+            // Store fresh user data
+            await AsyncStorage.setItem('user', JSON.stringify(userData));
+          } catch (userError) {
+            console.error('App: Failed to fetch fresh user profile:', userError);
+            // Continue with stored user data
+          }
+          
           // Token is still valid
           dispatch(restoreToken({
             token,
             refreshToken,
-            user: user ? JSON.parse(user) : null,
+            user: userData,
             tokenExpiry: expiry,
           }));
         } else if (refreshToken) {

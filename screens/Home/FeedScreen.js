@@ -18,7 +18,7 @@ import CommentComponent from '../../components/Comments/CommentComponent';
 
 const { width } = Dimensions.get('window');
 const BASE_URL = '/posts';  // Use relative URLs for API calls
-const SERVER_BASE_URL = 'http://192.168.1.5:8080';
+const SERVER_BASE_URL = 'http://192.168.1.5:8081';
 const COMMENTS_URL = '/comments';  // Use relative URLs for API calls
 const BOOKMARKS_URL = '/bookmarks';  // Use relative URLs for API calls
 

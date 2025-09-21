@@ -98,7 +98,7 @@ const ForgotPasswordScreen = ({ navigation, route }) => {
         }
       } else {
         // Use fetch for non-authenticated requests
-        response = await fetch("http://192.168.1.5:8080/api/auth/request-password-reset", {
+        response = await fetch("http://192.168.1.5:8081/api/auth/request-password-reset", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ email: email.trim() }),
