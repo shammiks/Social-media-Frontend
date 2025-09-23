@@ -38,14 +38,20 @@ export default function SearchScreen({ navigation }) {
     }
   };
 
-  const renderItem = ({ item }) => (
-    <TouchableOpacity
-      style={styles.item}
-      onPress={() => navigation.navigate('ShowProfile', { userId: item.id })}
-    >
-      <Text style={styles.username}>{item.username}</Text>
-    </TouchableOpacity>
-  );
+  const renderItem = ({ item }) => {
+    // Prevent navigation to admin profile
+    if (item.isAdmin) {
+      return null;
+    }
+    return (
+      <TouchableOpacity
+        style={styles.item}
+        onPress={() => navigation.navigate('ShowProfile', { userId: item.id })}
+      >
+        <Text style={styles.username}>{item.username}</Text>
+      </TouchableOpacity>
+    );
+  };
 
   const clearSearch = () => {
     setQuery('');

@@ -280,7 +280,6 @@ const dispatch = useDispatch();
       setUploadingAvatar(false);
     }
   };
-  // ...existing code...
   // (all other logic, handlers, and the return JSX)
 // The closing brace for ProfileScreen should be after the return JSX at the end of the component.
   const handleBioUpdate = async () => {
@@ -618,8 +617,8 @@ const dispatch = useDispatch();
           : post
       ));
 
-      setSavedPosts(prev => prev.map(post => 
-        post.id === editPostModal.post.id 
+      setSavedPosts(prev => prev.map(post =>
+        post.id === editPostModal.post.id
           ? { ...post, content: editContent.trim() }
           : post
       ));
@@ -917,22 +916,11 @@ const dispatch = useDispatch();
               {mediaItems.map((media, idx) => {
                 if (media.type === 'image') {
                   return (
-                    <TouchableOpacity key={idx} onPress={() => openImageModal(media.url)}>
-                      <Image source={{ uri: media.url }} style={styles.postImage} resizeMode="cover" />
-                    </TouchableOpacity>
+                    <DynamicFeedImage key={idx} imageUrl={media.url} onPress={() => openImageModal(media.url)} />
                   );
                 } else if (media.type === 'video') {
                   return (
-                    <Video
-                      key={idx}
-                      source={{ uri: media.url }}
-                      rate={1.0}
-                      volume={1.0}
-                      isMuted={false}
-                      resizeMode="cover"
-                      useNativeControls
-                      style={styles.video}
-                    />
+                    <DynamicFeedVideo key={idx} videoUrl={media.url} />
                   );
                 } else if (media.type === 'pdf') {
                   return (
@@ -964,20 +952,10 @@ const dispatch = useDispatch();
           ) : (
             <>
               {mediaItems[0]?.type === 'image' && (
-                <TouchableOpacity onPress={() => openImageModal(mediaItems[0].url)}>
-                  <Image source={{ uri: mediaItems[0].url }} style={styles.postImage} resizeMode="cover" />
-                </TouchableOpacity>
+                <DynamicFeedImage imageUrl={mediaItems[0].url} onPress={() => openImageModal(mediaItems[0].url)} />
               )}
               {mediaItems[0]?.type === 'video' && (
-                <Video
-                  source={{ uri: mediaItems[0].url }}
-                  rate={1.0}
-                  volume={1.0}
-                  isMuted={false}
-                  resizeMode="cover"
-                  useNativeControls
-                  style={styles.video}
-                />
+                <DynamicFeedVideo videoUrl={mediaItems[0].url} />
               )}
               {mediaItems[0]?.type === 'pdf' && (
                 <TouchableOpacity onPress={async () => {
@@ -1604,6 +1582,70 @@ const dispatch = useDispatch();
     </View>
   );
 };
+
+// Dynamically sized image for feed/profile based on aspect ratio
+function DynamicFeedImage({ imageUrl, onPress }) {
+  const [dimensions, setDimensions] = React.useState({ width: 1, height: 1 });
+
+  React.useEffect(() => {
+    if (imageUrl) {
+      Image.getSize(
+        imageUrl,
+        (width, height) => setDimensions({ width, height }),
+        () => setDimensions({ width: 1, height: 1 })
+      );
+    }
+  }, [imageUrl]);
+
+  const isLandscape = dimensions.width > dimensions.height;
+  const dynamicStyle = isLandscape
+    ? { height: 300 }
+    : { height: 500 };
+
+  return (
+    <TouchableOpacity onPress={onPress}>
+      <Image
+        source={{ uri: imageUrl }}
+        style={[styles.postImage, dynamicStyle]}
+        resizeMode="cover"
+      />
+    </TouchableOpacity>
+  );
+}
+
+// Dynamically sized video for feed/profile based on aspect ratio
+function DynamicFeedVideo({ videoUrl }) {
+  const [dimensions, setDimensions] = React.useState({ width: 1, height: 1 });
+
+  React.useEffect(() => {
+    if (videoUrl) {
+      // Use Image.getSize as a workaround to get video thumbnail size
+      const thumbUrl = videoUrl.replace(/\.[^.]+$/, '.jpg');
+      Image.getSize(
+        thumbUrl,
+        (width, height) => setDimensions({ width, height }),
+        () => setDimensions({ width: 1, height: 1 })
+      );
+    }
+  }, [videoUrl]);
+
+  const isLandscape = dimensions.width > dimensions.height;
+  const dynamicStyle = isLandscape
+    ? { height: 300 }
+    : { height: 500 };
+
+  return (
+    <Video
+      source={{ uri: videoUrl }}
+      rate={1.0}
+      volume={1.0}
+      isMuted={false}
+      resizeMode="cover"
+      useNativeControls
+      style={[styles.video, dynamicStyle]}
+    />
+  );
+}
 
 const styles = StyleSheet.create({
   container: {
@@ -2249,23 +2291,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#f5f5f5',
   },
   saveBtn: {
-    backgroundColor: '#007bff',
-  },
-  cancelBtnText: {
-    color: '#666',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  saveBtnText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-
-  // Bio Modal Styles
-  bioModalContainer: {
-    flex: 1,
-    backgroundColor: '#fff',
   },
   bioModalHeader: {
     flexDirection: 'row',
@@ -2352,7 +2377,6 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
 });
-
 
 export default ProfileScreen;
 

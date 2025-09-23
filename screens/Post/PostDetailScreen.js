@@ -309,10 +309,6 @@ const PostDetailScreen = ({ route, navigation }) => {
 
           {/* MEDIA CAROUSEL (image, video, pdf) */}
           {(() => {
-            const { width } = Dimensions.get('window');
-            const cardRadius = 16;
-            const mediaWidth = width - 16;
-            const mediaHeight = Math.round(mediaWidth * 0.62);
             const prependBase = (url) => {
               if (!url) return null;
               if (url.startsWith('http')) return url;
@@ -324,43 +320,59 @@ const PostDetailScreen = ({ route, navigation }) => {
             if (post.videoUrl) mediaItems.push({ type: 'video', url: prependBase(post.videoUrl) });
             if (post.pdfUrl) mediaItems.push({ type: 'pdf', url: prependBase(post.pdfUrl) });
             if (mediaItems.length === 0) return null;
+            
+            // For single media item, use dynamic sizing directly
+            if (mediaItems.length === 1) {
+              const media = mediaItems[0];
+              return (
+                <View style={{ marginBottom: 10, marginTop: 10, paddingHorizontal: 8 }}>
+                  {media.type === 'image' && (
+                    <DynamicFeedImage imageUrl={media.url} onPress={() => {}} />
+                  )}
+                  {media.type === 'video' && (
+                    <DynamicFeedVideo videoUrl={media.url} />
+                  )}
+                  {media.type === 'pdf' && (
+                    <TouchableOpacity
+                      style={{ height: 300, backgroundColor: '#e3e3e3', justifyContent: 'center', alignItems: 'center', borderRadius: 20 }}
+                      onPress={() => {
+                        if (media.url) {
+                          import('react-native').then(({ Linking }) => Linking.openURL(media.url));
+                        }
+                      }}
+                    >
+                      <Text style={{ color: '#1976D2', fontWeight: 'bold', fontSize: 20 }}>View PDF</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+              );
+            }
+            
+            // For multiple media items, use swiper with dynamic sizing for each
             return (
-              <View style={{ marginBottom: 0, marginTop: 0, borderTopLeftRadius: cardRadius, borderTopRightRadius: cardRadius, overflow: 'hidden' }}>
+              <View style={{ marginBottom: 10, marginTop: 10, paddingHorizontal: 8 }}>
                 <Swiper
-                  style={{ height: mediaHeight }}
+                  style={{ height: 400 }}
                   dotColor="#C4C4C4"
                   activeDotColor="#1976D2"
                   paginationStyle={{ bottom: 10 }}
                   loop={false}
-                  showsPagination={mediaItems.length > 1}
+                  showsPagination={true}
                 >
                   {mediaItems.map((item, idx) => {
                     if (item.type === 'image') {
                       return (
-                        <Image
-                          key={idx}
-                          source={{ uri: item.url }}
-                          style={{ width: mediaWidth, height: mediaHeight, backgroundColor: '#F2F2F7', borderRadius:20, }}
-                          resizeMode="cover"
-                        />
+                        <DynamicFeedImage key={idx} imageUrl={item.url} onPress={() => {}} />
                       );
                     } else if (item.type === 'video') {
                       return (
-                        <Video
-                          key={idx}
-                          source={{ uri: item.url }}
-                          style={{ width: mediaWidth, height: mediaHeight, backgroundColor: '#000' }}
-                          useNativeControls
-                          resizeMode="cover"
-                          shouldPlay={false}
-                          isLooping={false}
-                        />
+                        <DynamicFeedVideo key={idx} videoUrl={item.url} />
                       );
                     } else if (item.type === 'pdf') {
                       return (
                         <TouchableOpacity
                           key={idx}
-                          style={{ width: mediaWidth, height: mediaHeight, backgroundColor: '#e3e3e3', justifyContent: 'center', alignItems: 'center' }}
+                          style={{ height: 300, backgroundColor: '#e3e3e3', justifyContent: 'center', alignItems: 'center', borderRadius: 20 }}
                           onPress={() => {
                             if (item.url) {
                               import('react-native').then(({ Linking }) => Linking.openURL(item.url));
@@ -567,7 +579,82 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: 18,
   },
+  dynamicImage: {
+    width: '100%',
+    borderRadius: 20,
+    backgroundColor: '#F2F2F7',
+    marginBottom: 10,
+  },
+  dynamicVideo: {
+    width: '100%',
+    borderRadius: 20,
+    backgroundColor: '#000',
+    marginBottom: 10,
+  },
 });
 
+// Dynamically sized image for feed/profile based on aspect ratio
+function DynamicFeedImage({ imageUrl, onPress }) {
+  const [dimensions, setDimensions] = React.useState({ width: 1, height: 1 });
+
+  React.useEffect(() => {
+    if (imageUrl) {
+      Image.getSize(
+        imageUrl,
+        (width, height) => setDimensions({ width, height }),
+        () => setDimensions({ width: 1, height: 1 })
+      );
+    }
+  }, [imageUrl]);
+
+  const isLandscape = dimensions.width > dimensions.height;
+  const dynamicStyle = isLandscape
+    ? { height: 300 }
+    : { height: 500 };
+
+  return (
+    <TouchableOpacity onPress={onPress} activeOpacity={0.9}>
+      <Image
+        source={{ uri: imageUrl }}
+        style={[styles.dynamicImage, dynamicStyle]}
+        resizeMode="cover"
+      />
+    </TouchableOpacity>
+  );
+}
+
+// Dynamically sized video for feed/profile based on aspect ratio
+function DynamicFeedVideo({ videoUrl }) {
+  const [dimensions, setDimensions] = React.useState({ width: 1, height: 1 });
+
+  React.useEffect(() => {
+    if (videoUrl) {
+      // Use Image.getSize as a workaround to get video thumbnail size
+      const thumbUrl = videoUrl.replace(/\.[^.]+$/, '.jpg');
+      Image.getSize(
+        thumbUrl,
+        (width, height) => setDimensions({ width, height }),
+        () => setDimensions({ width: 1, height: 1 })
+      );
+    }
+  }, [videoUrl]);
+
+  const isLandscape = dimensions.width > dimensions.height;
+  const dynamicStyle = isLandscape
+    ? { height: 300 }
+    : { height: 500 };
+
+  return (
+    <Video
+      source={{ uri: videoUrl }}
+      rate={1.0}
+      volume={1.0}
+      isMuted={false}
+      resizeMode="cover"
+      useNativeControls
+      style={[styles.dynamicVideo, dynamicStyle]}
+    />
+  );
+}
 
 export default PostDetailScreen;

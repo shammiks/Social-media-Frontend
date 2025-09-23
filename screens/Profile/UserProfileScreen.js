@@ -133,7 +133,7 @@ function CommentsModal({ visible, onClose, postId, token, currentUserId, current
   };
 
   const updateComment = (updatedComment) => {
-    setComments(prev => prev.map(comment => 
+    setComments(prev => prev.map(comment =>
       comment.id === updatedComment.id ? updatedComment : comment
     ));
   };
@@ -961,22 +961,11 @@ const renderFollowButton = () => {
               {mediaItems.map((media, idx) => {
                 if (media.type === 'image') {
                   return (
-                    <TouchableOpacity key={idx} onPress={() => openImageModal(media.url)}>
-                      <Image source={{ uri: media.url }} style={styles.postImage} resizeMode="cover" />
-                    </TouchableOpacity>
+                    <DynamicFeedImage key={idx} imageUrl={media.url} onPress={() => openImageModal(media.url)} />
                   );
                 } else if (media.type === 'video') {
                   return (
-                    <Video
-                      key={idx}
-                      source={{ uri: media.url }}
-                      rate={1.0}
-                      volume={1.0}
-                      isMuted={false}
-                      resizeMode="cover"
-                      useNativeControls
-                      style={styles.video}
-                    />
+                    <DynamicFeedVideo key={idx} videoUrl={media.url} />
                   );
                 } else if (media.type === 'pdf') {
                   return (
@@ -1008,20 +997,10 @@ const renderFollowButton = () => {
           ) : (
             <>
               {mediaItems[0]?.type === 'image' && (
-                <TouchableOpacity onPress={() => openImageModal(mediaItems[0].url)}>
-                  <Image source={{ uri: mediaItems[0].url }} style={styles.postImage} resizeMode="cover" />
-                </TouchableOpacity>
+                <DynamicFeedImage imageUrl={mediaItems[0].url} onPress={() => openImageModal(mediaItems[0].url)} />
               )}
               {mediaItems[0]?.type === 'video' && (
-                <Video
-                  source={{ uri: mediaItems[0].url }}
-                  rate={1.0}
-                  volume={1.0}
-                  isMuted={false}
-                  resizeMode="cover"
-                  useNativeControls
-                  style={styles.video}
-                />
+                <DynamicFeedVideo videoUrl={mediaItems[0].url} />
               )}
               {mediaItems[0]?.type === 'pdf' && (
                 <TouchableOpacity onPress={async () => {
@@ -1784,5 +1763,72 @@ const styles = StyleSheet.create({
     borderRadius: 12,
   },
 });
+
+// Dynamically sized image for feed/profile based on aspect ratio
+function DynamicFeedImage({ imageUrl, onPress }) {
+  const [dimensions, setDimensions] = React.useState({ width: 1, height: 1 });
+
+  React.useEffect(() => {
+    if (imageUrl) {
+      Image.getSize(
+        imageUrl,
+        (width, height) => setDimensions({ width, height }),
+        () => setDimensions({ width: 1, height: 1 })
+      );
+    }
+  }, [imageUrl]);
+
+  const isLandscape = dimensions.width > dimensions.height;
+  const dynamicStyle = isLandscape
+    ? { height: 300 }
+    : { height: 500 };
+
+  return (
+    <TouchableOpacity onPress={onPress}>
+      <Image
+        source={{ uri: imageUrl }}
+        style={[styles.postImage, dynamicStyle]}
+        resizeMode="cover"
+      />
+    </TouchableOpacity>
+  );
+}
+
+// Dynamically sized video for feed/profile based on aspect ratio
+function DynamicFeedVideo({ videoUrl }) {
+  const [dimensions, setDimensions] = React.useState({ width: 1, height: 1 });
+
+  React.useEffect(() => {
+    if (videoUrl) {
+      // Use Image.getSize as a workaround to get video thumbnail size
+      // (Assumes video thumbnail is available at the same URL with .jpg extension)
+      // If not, fallback to default
+      // You can improve this with a backend-provided thumbnail or metadata
+      const thumbUrl = videoUrl.replace(/\.[^.]+$/, '.jpg');
+      Image.getSize(
+        thumbUrl,
+        (width, height) => setDimensions({ width, height }),
+        () => setDimensions({ width: 1, height: 1 })
+      );
+    }
+  }, [videoUrl]);
+
+  const isLandscape = dimensions.width > dimensions.height;
+  const dynamicStyle = isLandscape
+    ? { height: 300 }
+    : { height: 500 };
+
+  return (
+    <Video
+      source={{ uri: videoUrl }}
+      rate={1.0}
+      volume={1.0}
+      isMuted={false}
+      resizeMode="cover"
+      useNativeControls
+      style={[styles.video, dynamicStyle]}
+    />
+  );
+}
 
 export default UserProfileScreen;
