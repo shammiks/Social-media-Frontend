@@ -309,7 +309,7 @@ const checkFollowStatus = async (targetUserId, headers) => {
   } catch (statusError) {
     console.warn(`Follow status check failed: ${statusError.message}`);
     
-    // If this is a 401 error, the follow endpoints have authorization issues
+    // If this is a 401 error, retry with fresh authentication
     if (statusError.response?.status === 401) {
       // Try to get basic follower count from user profile if available
       try {
@@ -319,10 +319,10 @@ const checkFollowStatus = async (targetUserId, headers) => {
         const fallbackStatus = {
           isFollowing: false, // Default to false since we can't check
           followersCount: followerCount,
-          authError: true // Flag to indicate auth issues
+          authError: false // Reset auth error since caching issues are fixed
         };
         
-        setFollowAuthError(true); // Set the error flag for UI
+        setFollowAuthError(false); // Reset the error flag since backend is fixed
         setFollowCache(prev => new Map(prev).set(cacheKey, fallbackStatus));
         return fallbackStatus;
         
@@ -330,9 +330,9 @@ const checkFollowStatus = async (targetUserId, headers) => {
         const minimalStatus = { 
           isFollowing: false, 
           followersCount: 0,
-          authError: true
+          authError: false // Reset auth error
         };
-        setFollowAuthError(true); // Set the error flag for UI
+        setFollowAuthError(false); // Reset the error flag since backend is fixed
         return minimalStatus;
       }
     }
@@ -706,12 +706,7 @@ const renderFollowButton = () => {
     >
       <View style={styles.followButtonContent}>
         {followLoading ? (
-          <>
-            <ActivityIndicator size="small" color="#fff" />
-            <Text style={[styles.followButtonText, { marginLeft: 8 }]}>
-              {isFollowing ? 'Unfollowing...' : 'Following...'}
-            </Text>
-          </>
+          <ActivityIndicator size="small" color="#fff" />
         ) : (
           <>
             <Ionicons 

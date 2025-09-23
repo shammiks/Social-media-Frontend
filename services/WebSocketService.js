@@ -564,6 +564,35 @@ this.client.subscribe(`/user/${this.currentUserId}/queue/messages`, (message) =>
     console.log('✅ Token appears to be valid JWT format');
     return true;
   }
+
+  // Reset connection method for login process
+  resetConnection() {
+    console.log('🔄 WebSocket: Resetting connection for new login');
+    
+    // Disconnect existing connection if any
+    this.disconnect();
+    
+    // Reset all connection state
+    this.isConnected = false;
+    this.isConnecting = false;
+    this.isSubscribed = false;
+    this.reconnectAttempts = 0;
+    this.shouldReconnect = true;
+    
+    // Clear any existing subscriptions
+    this.subscriptions.clear();
+    
+    // Clear reconnect timer if running
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
+    
+    // Reset user ID
+    this.currentUserId = null;
+    
+    console.log('✅ WebSocket: Connection reset completed');
+  }
 }
 
 export default new WebSocketService();

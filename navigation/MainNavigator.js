@@ -11,6 +11,7 @@ import RegisterScreen from "../screens/Auth/RegisterScreen";
 import UserProfileScreen from "../screens/Profile/UserProfileScreen";
 import NotificationsScreen from "../screens/Notifications/NotificationsScreen";
 import AdminScreen from "../screens/Admin/AdminScreen";
+import SearchScreen from "../screens/Search/SearchScreen";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { Ionicons } from "@expo/vector-icons";
 import { useSelector } from "react-redux";
@@ -61,6 +62,8 @@ const AdminBottomTabNavigator = () => {
 
           if (route.name === "Admin") {
             iconName = focused ? "shield" : "shield-outline";
+          } else if (route.name === "Search") {
+            iconName = focused ? "search" : "search-outline";
           } else if (route.name === "Notifications") {
             iconName = focused ? "notifications" : "notifications-outline";
             // Return icon with notification badge
@@ -99,6 +102,7 @@ const AdminBottomTabNavigator = () => {
           tabBarLabel: 'Admin Panel',
         }}
       />
+      <Tab.Screen name="Search" component={SearchScreen} />
       <Tab.Screen 
         name="Notifications" 
         component={NotificationsScreen}
@@ -122,6 +126,8 @@ const RegularBottomTabNavigator = () => {
 
           if (route.name === "Feed") {
             iconName = focused ? "home" : "home-outline";
+          } else if (route.name === "Search") {
+            iconName = focused ? "search" : "search-outline";
           } else if (route.name === "Notifications") {
             iconName = focused ? "notifications" : "notifications-outline";
             // Return icon with notification badge
@@ -160,6 +166,7 @@ const RegularBottomTabNavigator = () => {
       })}
     >
       <Tab.Screen name="Feed" component={FeedScreen} />
+      <Tab.Screen name="Search" component={SearchScreen} />
       <Tab.Screen name="Chat" component={ChatListScreen} />
       <Tab.Screen name="Post" component={CreatePostScreen} />
       <Tab.Screen name="Profile" component={ProfileScreen} />

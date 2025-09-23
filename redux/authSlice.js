@@ -70,10 +70,19 @@ const authSlice = createSlice({
       state.refreshToken = refreshToken;
       state.user = user;
       state.tokenExpiry = tokenExpiry;
-      state.isAuthenticated = !!token;
+      // Only authenticate if we have both token and user
+      state.isAuthenticated = !!(token && user);
+    },
+
+    // Add action to sync token state from AsyncStorage
+    syncTokenFromStorage: (state, action) => {
+      const { token } = action.payload;
+      if (token && state.isAuthenticated) {
+        state.token = token;
+      }
     },
   },
 });
 
-export const { loginSuccess, tokenRefreshSuccess, logout, restoreToken } = authSlice.actions;
+export const { loginSuccess, tokenRefreshSuccess, logout, restoreToken, syncTokenFromStorage } = authSlice.actions;
 export default authSlice.reducer;

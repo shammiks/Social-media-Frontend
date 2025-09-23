@@ -35,91 +35,105 @@ const AuthLoader = () => {
 
   // Initialize both WebSocket services when user is authenticated
   useEffect(() => {
-    console.log('App: Authentication state changed:', { 
-      isAuthenticated, 
-      userId: user?.id, 
-      hasToken: !!token,
-      userType: typeof user?.id 
-    });
-    
-    if (isAuthenticated && user?.id && token) {
-      console.log('App: Setting up WebSocket services for authenticated user:', user.id);
-      console.log('App: User object details:', { 
-        userId: user.id, 
-        userIdType: typeof user.id, 
-        userName: user.username || user.email,
-        fullUser: user 
+    const checkTokenAsync = async () => {
+      const storedToken = await AsyncStorage.getItem('authToken');
+      console.log('App: Authentication state changed:', { 
+        isAuthenticated, 
+        userId: user?.id, 
+        hasToken: !!token,
+        hasStoredToken: !!storedToken,
+        userType: typeof user?.id 
       });
+    };
+    
+    checkTokenAsync();
+    
+    // Use stored token if Redux token is missing but we're authenticated
+    const initializeWebSocket = async () => {
+      const storedToken = await AsyncStorage.getItem('authToken');
+      const effectiveToken = token || storedToken;
       
-      // Existing notification WebSocket
-      try {
-        NotificationWebSocketService.connect(user.id, token, dispatch);
-        dispatch(fetchNotificationCounts());
-        console.log('App: Notification WebSocket setup completed');
-      } catch (error) {
-        console.error('App: Failed to setup Notification WebSocket:', error);
-      }
-      
-      // Chat WebSocket setup
-      try {
-        console.log('App: Setting up Chat WebSocket...');
-        WebSocketService.setDispatch(dispatch);
+      if (isAuthenticated && user?.id && effectiveToken) {
+        console.log('App: Setting up WebSocket services for authenticated user:', user.id);
+        console.log('App: User object details:', { 
+          userId: user.id, 
+          userIdType: typeof user.id, 
+          userName: user.username || user.email,
+          fullUser: user,
+          usingStoredToken: !token && !!storedToken
+        });
         
-        // Pass async actions to WebSocket service
-        WebSocketService.setAsyncActions({ loadChats });
-        
-        // Ensure user ID is numeric for WebSocket service
-        const userId = typeof user.id === 'string' ? parseInt(user.id, 10) : user.id;
-        console.log('App: Setting chat WebSocket user ID:', userId, 'type:', typeof userId);
-        
-        if (!userId || isNaN(userId)) {
-          console.error('App: Invalid user ID for WebSocket:', userId);
-          return;
+        // Existing notification WebSocket
+        try {
+          NotificationWebSocketService.connect(user.id, effectiveToken, dispatch);
+          dispatch(fetchNotificationCounts());
+          console.log('App: Notification WebSocket setup completed');
+        } catch (error) {
+          console.error('App: Failed to setup Notification WebSocket:', error);
         }
         
-        WebSocketService.setCurrentUserId(userId);
-        
-        // Connect chat WebSocket
-        WebSocketService.connect()
-          .then(() => {
-            console.log('App: Chat WebSocket connected successfully');
-            
-            // Log connection status after successful connection
-            setTimeout(() => {
-              const status = WebSocketService.getConnectionStatus();
-              console.log('App: Chat WebSocket final status:', status);
-            }, 1000);
-          })
-          .catch(error => {
-            console.error('App: Failed to connect Chat WebSocket:', error);
-          });
+        // Chat WebSocket setup
+        try {
+          console.log('App: Setting up Chat WebSocket...');
+          WebSocketService.setDispatch(dispatch);
           
-      } catch (error) {
-        console.error('App: Error setting up Chat WebSocket:', error);
-      }
+          // Pass async actions to WebSocket service
+          WebSocketService.setAsyncActions({ loadChats });
+          
+          // Ensure user ID is numeric for WebSocket service
+          const userId = typeof user.id === 'string' ? parseInt(user.id, 10) : user.id;
+          console.log('App: Setting chat WebSocket user ID:', userId, 'type:', typeof userId);
+          
+          if (!userId || isNaN(userId)) {
+            console.error('App: Invalid user ID for WebSocket:', userId);
+            return;
+          }
+          
+          WebSocketService.setCurrentUserId(userId);
+          
+          // Connect chat WebSocket
+          WebSocketService.connect()
+            .then(() => {
+              console.log('App: Chat WebSocket connected successfully');
+              
+              // Log connection status after successful connection
+              setTimeout(() => {
+                const status = WebSocketService.getConnectionStatus();
+                console.log('App: Chat WebSocket final status:', status);
+              }, 1000);
+            })
+            .catch(error => {
+              console.error('App: Failed to connect Chat WebSocket:', error);
+            });
+            
+        } catch (error) {
+          console.error('App: Error setting up Chat WebSocket:', error);
+        }
+      } else {
+        console.log('App: User not authenticated, disconnecting WebSocket services');
         
-    } else {
-      console.log('App: User not authenticated, disconnecting WebSocket services');
-      
-      // Disconnect both WebSocket services
-      try {
-        NotificationWebSocketService.disconnect();
-        console.log('App: Notification WebSocket disconnected');
-      } catch (error) {
-        console.error('App: Error disconnecting Notification WebSocket:', error);
+        // Disconnect both WebSocket services
+        try {
+          NotificationWebSocketService.disconnect();
+          console.log('App: Notification WebSocket disconnected');
+        } catch (error) {
+          console.error('App: Error disconnecting Notification WebSocket:', error);
+        }
+        
+        try {
+          WebSocketService.disconnect();
+          console.log('App: Chat WebSocket disconnected');
+        } catch (error) {
+          console.error('App: Error disconnecting Chat WebSocket:', error);
+        }
       }
-      
-      try {
-        WebSocketService.disconnect();
-        console.log('App: Chat WebSocket disconnected');
-      } catch (error) {
-        console.error('App: Error disconnecting Chat WebSocket:', error);
-      }
-    }
+    };
+    
+    initializeWebSocket();
 
     // Cleanup on unmount or auth state change
     return () => {
-      if (!isAuthenticated || !user || !token) {
+      if (!isAuthenticated || !user) {
         console.log('App: Cleanup - disconnecting WebSocket services');
         try {
           NotificationWebSocketService.disconnect();
@@ -129,7 +143,7 @@ const AuthLoader = () => {
         }
       }
     };
-  }, [isAuthenticated, user?.id, token, dispatch]);
+  }, [isAuthenticated, user?.id, dispatch]); // Removed token dependency to prevent disconnects
 
   useEffect(() => {
     const loadToken = async () => {
