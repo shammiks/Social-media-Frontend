@@ -15,7 +15,12 @@ import { Video } from 'expo-av';
 import Swiper from 'react-native-swiper';
 import { useSelector } from 'react-redux';
 import { Ionicons } from '@expo/vector-icons';
+import Icon from 'react-native-vector-icons/MaterialIcons';
 import CommentComponent from '../../components/Comments/CommentComponent';
+import ReportModal from '../../components/ReportModal';
+import WarningModal from '../../components/Admin/WarningModal';
+import BanModal from '../../components/Admin/BanModal';
+import { adminAPI } from '../../services/AdminApi';
 import API from '../../utils/api';
 import { API_ENDPOINTS } from '../../utils/apiConfig';
 
@@ -31,6 +36,11 @@ const PostDetailScreen = ({ route, navigation }) => {
   const [likesCount, setLikesCount] = useState(0);
   const [avatarError, setAvatarError] = useState(false);
   const [commentAvatarErrors, setCommentAvatarErrors] = useState({});
+  const [reportModal, setReportModal] = useState({ visible: false, postId: null });
+  
+  // Admin modal states
+  const [warningModalVisible, setWarningModalVisible] = useState(false);
+  const [banModalVisible, setBanModalVisible] = useState(false);
 
   useEffect(() => {
     if (postId) {
@@ -207,6 +217,103 @@ const PostDetailScreen = ({ route, navigation }) => {
       } else {
         Alert.alert('Error', 'Failed to update like status');
       }
+    }
+  };
+
+  const openReportModal = (postId) => {
+    setReportModal({ visible: true, postId });
+  };
+
+  const closeReportModal = () => {
+    setReportModal({ visible: false, postId: null });
+  };
+
+  // Admin action handlers
+  const handleWarnUser = () => {
+    if (post?.user?.isBanned) {
+      Alert.alert('User Banned', 'This user is already banned.');
+      return;
+    }
+    setWarningModalVisible(true);
+  };
+
+  const handleBanUser = () => {
+    if (post?.user?.isBanned) {
+      Alert.alert('User Banned', 'This user is already banned.');
+      return;
+    }
+    
+    // Check if user has warnings first
+    if (!post?.warningCount || post.warningCount === 0) {
+      Alert.alert(
+        'Warning Required',
+        'You must issue a warning to the user before banning them.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Issue Warning', onPress: () => handleWarnUser() }
+        ]
+      );
+      return;
+    }
+    
+    setBanModalVisible(true);
+  };
+
+  const handleDeletePost = () => {
+    Alert.alert(
+      'Delete Post',
+      'Are you sure you want to delete this post? This action cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const result = await adminAPI.deletePost(post.id);
+              Alert.alert('Success', result.message || 'Post deleted successfully!');
+              navigation.goBack(); // Go back since post is deleted
+            } catch (error) {
+              console.error('Failed to delete post:', error);
+              Alert.alert('Error', 'Failed to delete post. Please try again.');
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const handleWarningSubmit = async (warningData) => {
+    try {
+      const result = await adminAPI.warnUser({
+        postId: post.id,
+        userId: post.user.id,
+        reason: warningData.reason,
+        warningMessage: warningData.message,
+      });
+
+      Alert.alert('Success', result.message || 'Warning sent successfully!');
+      setWarningModalVisible(false);
+      fetchPostDetails(); // Refresh post details
+    } catch (error) {
+      console.error('Failed to send warning:', error);
+      Alert.alert('Error', 'Failed to send warning. Please try again.');
+    }
+  };
+
+  const handleBanSubmit = async (banData) => {
+    try {
+      const result = await adminAPI.banUser({
+        userId: post.user.id,
+        reason: banData.reason,
+      });
+
+      Alert.alert('Success', result.message || 'User banned successfully!');
+      setBanModalVisible(false);
+      fetchPostDetails(); // Refresh post details
+    } catch (error) {
+      console.error('Failed to ban user:', error);
+      Alert.alert('Error', 'Failed to ban user. Please try again.');
     }
   };
 
@@ -402,7 +509,54 @@ const PostDetailScreen = ({ route, navigation }) => {
               <Ionicons name="chatbubble-outline" size={22} color="#1976D2" />
               <Text style={styles.proActionText}>{comments.length}</Text>
             </TouchableOpacity>
+            <TouchableOpacity 
+              style={styles.proActionButton}
+              onPress={() => openReportModal(post.id)}
+            >
+              <Ionicons name="flag-outline" size={22} color="#ff6b6b" />
+              <Text style={[styles.proActionText, { color: '#ff6b6b' }]}>Report</Text>
+            </TouchableOpacity>
           </View>
+
+          {/* Admin Actions - Only show for admin users */}
+          {currentUser?.isAdmin && (
+            <View style={styles.adminActions}>
+              <Text style={styles.adminActionsTitle}>Admin Actions</Text>
+              <View style={styles.adminActionButtons}>
+                <TouchableOpacity
+                  style={[styles.adminActionButton, styles.warnButton]}
+                  onPress={handleWarnUser}
+                  disabled={post?.user?.isBanned}
+                >
+                  <Icon name="warning" size={18} color="#fff" />
+                  <Text style={styles.adminActionButtonText}>
+                    {post?.warningCount > 0 ? 'Final Warning' : 'Warn User'}
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[
+                    styles.adminActionButton, 
+                    styles.banButton, 
+                    post?.user?.isBanned && styles.disabledButton
+                  ]}
+                  onPress={handleBanUser}
+                  disabled={post?.user?.isBanned}
+                >
+                  <Icon name="block" size={18} color="#fff" />
+                  <Text style={styles.adminActionButtonText}>Ban User</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.adminActionButton, styles.deleteButton]}
+                  onPress={handleDeletePost}
+                >
+                  <Icon name="delete" size={18} color="#fff" />
+                  <Text style={styles.adminActionButtonText}>Delete</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
         </View>
 
         {/* Divider */}
@@ -420,6 +574,28 @@ const PostDetailScreen = ({ route, navigation }) => {
           </View>
         </View>
       </ScrollView>
+
+      {/* Report Modal */}
+      <ReportModal
+        visible={reportModal.visible}
+        postId={reportModal.postId}
+        onClose={closeReportModal}
+      />
+
+      {/* Admin Modals */}
+      <WarningModal
+        visible={warningModalVisible}
+        onClose={() => setWarningModalVisible(false)}
+        onSubmit={handleWarningSubmit}
+        post={post}
+      />
+
+      <BanModal
+        visible={banModalVisible}
+        onClose={() => setBanModalVisible(false)}
+        onSubmit={handleBanSubmit}
+        post={post}
+      />
     </View>
   );
 };
@@ -591,6 +767,53 @@ const styles = StyleSheet.create({
     backgroundColor: '#000',
     marginBottom: 10,
   },
+  
+  // Admin action styles
+  adminActions: {
+    marginTop: 15,
+    paddingTop: 15,
+    borderTopWidth: 1,
+    borderTopColor: '#e1e8ed',
+  },
+  adminActionsTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#1a1a1a',
+    marginBottom: 10,
+  },
+  adminActionButtons: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  adminActionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 6,
+    flex: 1,
+    marginHorizontal: 4,
+  },
+  warnButton: {
+    backgroundColor: '#f39c12',
+  },
+  banButton: {
+    backgroundColor: '#e74c3c',
+  },
+  deleteButton: {
+    backgroundColor: '#95a5a6',
+  },
+  disabledButton: {
+    backgroundColor: '#bdc3c7',
+    opacity: 0.6,
+  },
+  adminActionButtonText: {
+    fontSize: 12,
+    fontWeight: 'bold',
+    color: '#fff',
+    marginLeft: 4,
+  },
 });
 
 // Dynamically sized image for feed/profile based on aspect ratio
@@ -641,8 +864,8 @@ function DynamicFeedVideo({ videoUrl }) {
 
   const isLandscape = dimensions.width > dimensions.height;
   const dynamicStyle = isLandscape
-    ? { height: 300 }
-    : { height: 500 };
+    ? { height: 220 }
+    : { height: 350 };
 
   return (
     <Video

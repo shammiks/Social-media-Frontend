@@ -1,10 +1,10 @@
 {
   "expo": {
-    "name": "InterviewExperienceApp",
-    "slug": "InterviewExperienceApp",
+  "name": "AspireHub",
+  "slug": "aspirehub",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/images/icon.png",
+    "icon": "./assets/images/aspirehub.png",
     "scheme": "myapp",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
@@ -17,7 +17,7 @@
     "WRITE_EXTERNAL_STORAGE"
   ],
   "adaptiveIcon": {
-    "foregroundImage": "./assets/images/adaptive-icon.png",
+    "foregroundImage": "./assets/images/aspirehub.png",
     "backgroundColor": "#ffffff"
   }
 },

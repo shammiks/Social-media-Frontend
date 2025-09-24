@@ -20,39 +20,43 @@ import { View, Text } from "react-native";
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
 
-// Notification Badge Component
+// 🔔 Notification Badge Component
 const NotificationBadge = ({ count }) => {
   if (!count || count === 0) return null;
-  
+
   return (
-    <View style={{
-      position: 'absolute',
-      right: -6,
-      top: -3,
-      backgroundColor: '#FF3B30',
-      borderRadius: 10,
-      minWidth: 20,
-      height: 20,
-      justifyContent: 'center',
-      alignItems: 'center',
-      borderWidth: 2,
-      borderColor: '#FFFFFF',
-    }}>
-      <Text style={{
-        color: '#FFFFFF',
-        fontSize: 12,
-        fontWeight: 'bold',
-        textAlign: 'center',
-      }}>
-        {count > 99 ? '99+' : count}
+    <View
+      style={{
+        position: "absolute",
+        right: -8,
+        top: -4,
+        backgroundColor: "#FF3B30",
+        borderRadius: 10,
+        minWidth: 20,
+        height: 20,
+        justifyContent: "center",
+        alignItems: "center",
+        borderWidth: 2,
+        borderColor: "#FFFFFF",
+      }}
+    >
+      <Text
+        style={{
+          color: "#FFFFFF",
+          fontSize: 12,
+          fontWeight: "bold",
+          textAlign: "center",
+        }}
+      >
+        {count > 99 ? "99+" : count}
       </Text>
     </View>
   );
 };
 
-// Admin Bottom Tab Navigator - Only Admin and Notifications screens
+// 🛡️ Admin Bottom Tab Navigator
 const AdminBottomTabNavigator = () => {
-  const { unreadCount } = useSelector(state => state.notifications);
+  const { unreadCount } = useSelector((state) => state.notifications);
 
   return (
     <Tab.Navigator
@@ -66,9 +70,8 @@ const AdminBottomTabNavigator = () => {
             iconName = focused ? "search" : "search-outline";
           } else if (route.name === "Notifications") {
             iconName = focused ? "notifications" : "notifications-outline";
-            // Return icon with notification badge
             return (
-              <View style={{ position: 'relative' }}>
+              <View style={{ position: "relative", alignItems: "center" }}>
                 <Ionicons name={iconName} size={size} color={color} />
                 <NotificationBadge count={unreadCount} />
               </View>
@@ -77,46 +80,47 @@ const AdminBottomTabNavigator = () => {
 
           return <Ionicons name={iconName} size={size} color={color} />;
         },
-        tabBarLabelStyle: {
-          fontSize: 14,
-          fontWeight: "600",
-        },
+        tabBarShowLabel: false,
         tabBarActiveTintColor: "#007AFF",
         tabBarInactiveTintColor: "gray",
         tabBarStyle: {
           backgroundColor: "#fff",
-          paddingBottom: 5,
-          paddingTop: 5,
           height: 80,
           borderTopWidth: 2,
           elevation: 10,
           borderTopColor: "#dcdcdc",
+          paddingTop: 10,
+          paddingBottom: 10,
+        },
+        tabBarIconStyle: {
+          alignItems: "center",
+          justifyContent: "center",
         },
         headerShown: false,
       })}
     >
-      <Tab.Screen 
-        name="Admin" 
+      <Tab.Screen
+        name="Admin"
         component={AdminScreen}
         options={{
-          tabBarLabel: 'Admin Panel',
+          tabBarLabel: "Admin Panel",
         }}
       />
       <Tab.Screen name="Search" component={SearchScreen} />
-      <Tab.Screen 
-        name="Notifications" 
+      <Tab.Screen
+        name="Notifications"
         component={NotificationsScreen}
         options={{
-          tabBarLabel: 'Notifications',
+          tabBarLabel: "Notifications",
         }}
       />
     </Tab.Navigator>
   );
 };
 
-// Regular User Bottom Tab Navigator - All screens except Admin
+// 👤 Regular User Bottom Tab Navigator
 const RegularBottomTabNavigator = () => {
-  const { unreadCount } = useSelector(state => state.notifications);
+  const { unreadCount } = useSelector((state) => state.notifications);
 
   return (
     <Tab.Navigator
@@ -130,9 +134,8 @@ const RegularBottomTabNavigator = () => {
             iconName = focused ? "search" : "search-outline";
           } else if (route.name === "Notifications") {
             iconName = focused ? "notifications" : "notifications-outline";
-            // Return icon with notification badge
             return (
-              <View style={{ position: 'relative' }}>
+              <View style={{ position: "relative", alignItems: "center" }}>
                 <Ionicons name={iconName} size={size} color={color} />
                 <NotificationBadge count={unreadCount} />
               </View>
@@ -147,25 +150,26 @@ const RegularBottomTabNavigator = () => {
 
           return <Ionicons name={iconName} size={size} color={color} />;
         },
-        tabBarLabelStyle: {
-          fontSize: 14,
-          fontWeight: "600",
-        },
+        tabBarShowLabel: false,
         tabBarActiveTintColor: "#007AFF",
         tabBarInactiveTintColor: "gray",
         tabBarStyle: {
           backgroundColor: "#fff",
-          paddingBottom: 5,
-          paddingTop: 5,
-          height: 80,
+          height: 60,
           borderTopWidth: 2,
           elevation: 10,
-          borderTopColor: "#dcdcdc",
+          borderTopColor: "#342121ff",
+          paddingTop: 10,
+          paddingBottom: 10,
+          },
+        tabBarIconStyle: {
+          alignItems: "center",
+          justifyContent: "center",
         },
         headerShown: false,
       })}
     >
-      <Tab.Screen name="Feed" component={FeedScreen} />
+      <Tab.Screen name="Feed" component={FeedScreen} options={{ headerShown: false }} />
       <Tab.Screen name="Search" component={SearchScreen} />
       <Tab.Screen name="Chat" component={ChatListScreen} />
       <Tab.Screen name="Post" component={CreatePostScreen} />
@@ -174,16 +178,10 @@ const RegularBottomTabNavigator = () => {
   );
 };
 
-// Main Bottom Tab Navigator that chooses between admin and regular based on user role
+// 🔀 Main Bottom Tab Navigator (chooses admin vs regular)
 const BottomTabNavigator = () => {
-  const { user } = useSelector(state => state.auth);
+  const { user } = useSelector((state) => state.auth);
 
-  // Debug logging for user admin status
-  console.log('🔍 MainNavigator - User object:', user);
-  console.log('🔍 MainNavigator - User isAdmin:', user?.isAdmin);
-  console.log('🔍 MainNavigator - User keys:', user ? Object.keys(user) : 'null');
-
-  // Return different tab navigators based on user role
   if (user?.isAdmin) {
     return <AdminBottomTabNavigator />;
   } else {
@@ -191,71 +189,72 @@ const BottomTabNavigator = () => {
   }
 };
 
-// Stack navigator for Admin users - only allows access to UserProfile and limited screens
+// 🛡️ Admin Authenticated Stack
 const AdminAuthenticatedStack = () => {
-  const Stack = createNativeStackNavigator();
-  
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
       <Stack.Screen name="MainTabs" component={BottomTabNavigator} />
-      <Stack.Screen 
-        name="ShowProfile" 
+      <Stack.Screen
+        name="ShowProfile"
         component={UserProfileScreen}
-        options={{ 
-          presentation: 'modal',
-          gestureEnabled: true 
+        options={{
+          presentation: "modal",
+          gestureEnabled: true,
         }}
       />
-      {/* Admin can access notifications through the tab navigator */}
+      <Stack.Screen
+        name="PostDetail"
+        component={PostDetailScreen}
+        options={{
+          headerShown: false,
+          gestureEnabled: true,
+        }}
+      />
     </Stack.Navigator>
   );
 };
 
-// Stack navigator for Regular users - full access to all screens
+// 👤 Regular Authenticated Stack
 const RegularAuthenticatedStack = () => {
-  const Stack = createNativeStackNavigator();
-  
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
       <Stack.Screen name="MainTabs" component={BottomTabNavigator} />
-      <Stack.Screen 
-        name="ShowProfile" 
+      <Stack.Screen
+        name="ShowProfile"
         component={UserProfileScreen}
-        options={{ 
-          presentation: 'modal',
-          gestureEnabled: true 
+        options={{
+          presentation: "modal",
+          gestureEnabled: true,
         }}
       />
-      {/* Post Detail Screen */}
-      <Stack.Screen 
-        name="PostDetail" 
+      <Stack.Screen
+        name="PostDetail"
         component={PostDetailScreen}
-        options={{ 
+        options={{
           headerShown: false,
-          gestureEnabled: true 
+          gestureEnabled: true,
         }}
       />
-      <Stack.Screen 
-        name="Notifications" 
+      <Stack.Screen
+        name="Notifications"
         component={NotificationsScreen}
-        options={{ 
+        options={{
           headerShown: false,
-          gestureEnabled: true 
+          gestureEnabled: true,
         }}
       />
-      {/* Add Chat-related screens */}
-      <Stack.Screen 
-        name="ChatScreen" 
+      <Stack.Screen
+        name="ChatScreen"
         component={ChatScreen}
         options={{
           headerShown: true,
-          title: 'Chat',
+          title: "Chat",
           headerStyle: {
-            backgroundColor: '#007AFF',
+            backgroundColor: "#007AFF",
           },
-          headerTintColor: '#fff',
+          headerTintColor: "#fff",
           headerTitleStyle: {
-            fontWeight: 'bold',
+            fontWeight: "bold",
           },
         }}
       />
@@ -263,11 +262,10 @@ const RegularAuthenticatedStack = () => {
   );
 };
 
-// Main Authenticated Stack that chooses between admin and regular based on user role
+// 🔐 Main Authenticated Stack (admin vs regular)
 const AuthenticatedStack = () => {
-  const { user } = useSelector(state => state.auth);
-  
-  // Return different stack navigators based on user role
+  const { user } = useSelector((state) => state.auth);
+
   if (user?.isAdmin) {
     return <AdminAuthenticatedStack />;
   } else {
@@ -277,7 +275,6 @@ const AuthenticatedStack = () => {
 
 export default function MainNavigator() {
   const isAuthenticated = useSelector((state) => state.auth.isAuthenticated);
-  const token = useSelector((state) => state.auth.token);
   const Stack = createNativeStackNavigator();
 
   return (

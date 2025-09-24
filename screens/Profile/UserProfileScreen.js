@@ -30,6 +30,7 @@ import NotificationIntegrationService from '../../services/NotificationIntegrati
 import { loadChats } from '../../redux/ChatSlice';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import CommentComponent from '../../components/Comments/CommentComponent';
+import ReportModal from '../../components/ReportModal';
 
 const { width } = Dimensions.get('window');
 
@@ -269,6 +270,7 @@ const UserProfileScreen = ({ route, navigation }) => {
   const [chatLoading, setChatLoading] = useState(false); // NEW: Chat creation loading
   const [error, setError] = useState(null);
   const [commentsModal, setCommentsModal] = useState({ visible: false, postId: null });
+  const [reportModal, setReportModal] = useState({ visible: false, postId: null });
   const [followCache, setFollowCache] = useState(new Map());
   const getFollowCacheKey = (currentUserId, targetUserId) => `${currentUserId}-${targetUserId}`;
 
@@ -818,7 +820,7 @@ const renderFollowButton = () => {
         shareMessage += `"${post.content}"\n\n`;
       }
       
-      shareMessage += `Shared from Social App`;
+  shareMessage += `Shared from AspireHub`;
 
       const shareOptions = {
         message: shareMessage,
@@ -852,6 +854,14 @@ const renderFollowButton = () => {
 
   const closeComments = () => {
     setCommentsModal({ visible: false, postId: null });
+  };
+
+  const openReportModal = (postId) => {
+    setReportModal({ visible: true, postId });
+  };
+
+  const closeReportModal = () => {
+    setReportModal({ visible: false, postId: null });
   };
 
   const onRefresh = () => {
@@ -1046,14 +1056,18 @@ const renderFollowButton = () => {
             onPress={() => openComments(item.id)}
           >
             <Ionicons name="chatbubble-outline" size={20} color="#444" />
-            <Text style={styles.actionText}>Comment</Text>
           </TouchableOpacity>
           <TouchableOpacity 
             style={styles.actionBtn}
             onPress={() => {/* Implement share functionality */}}
           >
             <Feather name="share" size={20} color="#444" />
-            <Text style={styles.actionText}>Share</Text>
+          </TouchableOpacity>
+          <TouchableOpacity 
+            style={styles.actionBtn}
+            onPress={() => openReportModal(item.id)}
+          >
+            <Ionicons name="flag-outline" size={20} color="#ff6b6b" />
           </TouchableOpacity>
         </View>
       </Animatable.View>
@@ -1199,6 +1213,13 @@ const renderFollowButton = () => {
         currentUserId={currentUserId}
         currentUser={currentUser}
         navigation={navigation}
+      />
+
+      {/* Report Modal */}
+      <ReportModal
+        visible={reportModal.visible}
+        postId={reportModal.postId}
+        onClose={closeReportModal}
       />
     </View>
   );
@@ -1815,8 +1836,8 @@ function DynamicFeedVideo({ videoUrl }) {
 
   const isLandscape = dimensions.width > dimensions.height;
   const dynamicStyle = isLandscape
-    ? { height: 300 }
-    : { height: 500 };
+    ? { height: 220 }
+    : { height: 350 };
 
   return (
     <Video

@@ -29,11 +29,18 @@ import TokenManager from '../../utils/tokenManager';
 import WebSocketService from '../../services/WebSocketService';
 import ChatAPI from '../../services/ChatApi';
 import NotificationIntegrationService from '../../services/NotificationIntegrationService';
-import Animated, { FadeInUp } from 'react-native-reanimated';
+import Animated, { 
+  FadeInUp, 
+  useSharedValue, 
+  useAnimatedStyle, 
+  withTiming, 
+  runOnJS 
+} from 'react-native-reanimated';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { Ionicons, Feather, MaterialIcons } from '@expo/vector-icons';
 import PagerView from 'react-native-pager-view';
 import CommentComponent from '../../components/Comments/CommentComponent';
+import ReportModal from '../../components/ReportModal';
 import { API_ENDPOINTS } from '../../utils/apiConfig';
 
 const { width } = Dimensions.get('window');
@@ -83,11 +90,53 @@ const dispatch = useDispatch();
   const [bioLoading, setBioLoading] = useState(false);
   // Followers/Following modal state
   const [listModal, setListModal] = useState({ visible: false, type: null, data: [], loading: false });
+  // Report modal state
+  const [reportModal, setReportModal] = useState({ visible: false, postId: null });
   // Menu state for profile options
   const [menuVisible, setMenuVisible] = useState(false);
+  // Header visibility state for scroll-to-hide functionality
+  const [showHeader, setShowHeader] = useState(true);
+  const [lastOffset, setLastOffset] = useState(0);
+  const headerTranslateY = useSharedValue(0);
+  const headerOpacity = useSharedValue(1);
   const pagerRef = useRef(null);
 
   const BASE_URL = API_ENDPOINTS.BASE.replace('/api', ''); // Remove /api suffix for direct endpoint calls
+
+  // Animated header control function
+  const updateHeaderVisibility = useCallback((visible) => {
+    if (visible) {
+      headerTranslateY.value = withTiming(0, { duration: 300 });
+      headerOpacity.value = withTiming(1, { duration: 300 });
+      contentMarginTop.value = withTiming(300, { duration: 300 });
+    } else {
+      headerTranslateY.value = withTiming(-300, { duration: 300 }); // Move completely out of view
+      headerOpacity.value = withTiming(0, { duration: 300 });
+      contentMarginTop.value = withTiming(0, { duration: 300 });
+    }
+    runOnJS(setShowHeader)(visible);
+  }, [headerTranslateY, headerOpacity, contentMarginTop]);
+
+  // Animated style for header
+  const animatedHeaderStyle = useAnimatedStyle(() => {
+    return {
+      position: 'absolute',
+      top: 0,
+      left: 0,
+      right: 0,
+      zIndex: 1000,
+      transform: [{ translateY: headerTranslateY.value }],
+      opacity: headerOpacity.value,
+    };
+  });
+
+  // Animated style for content to adjust top margin
+  const contentMarginTop = useSharedValue(300); // Approximate header height
+  const animatedContentStyle = useAnimatedStyle(() => {
+    return {
+      marginTop: showHeader ? contentMarginTop.value : 0,
+    };
+  });
 
   const fetchData = useCallback(async () => {
     try {
@@ -519,6 +568,14 @@ const dispatch = useDispatch();
     setCommentsModal({ visible: false, postId: null });
     setNewComment('');
     setComments([]);
+  };
+
+  const openReportModal = (postId) => {
+    setReportModal({ visible: true, postId });
+  };
+
+  const closeReportModal = () => {
+    setReportModal({ visible: false, postId: null });
   };
 
   const fetchComments = async (postId) => {
@@ -1001,14 +1058,18 @@ const dispatch = useDispatch();
             onPress={() => openComments(item.id)}
           >
             <Ionicons name="chatbubble-outline" size={20} color="#444" />
-            <Text style={styles.actionText}>Comment</Text>
           </TouchableOpacity>
           <TouchableOpacity 
             style={styles.actionBtn}
             onPress={() => {/* Implement share functionality */}}
           >
             <Feather name="share" size={20} color="#444" />
-            <Text style={styles.actionText}>Share</Text>
+          </TouchableOpacity>
+          <TouchableOpacity 
+            style={styles.actionBtn}
+            onPress={() => openReportModal(item.id)}
+          >
+            <Ionicons name="flag-outline" size={20} color="#ff6b6b" />
           </TouchableOpacity>
         </View>
       </Animated.View>
@@ -1018,7 +1079,7 @@ const dispatch = useDispatch();
   return (
     <View style={styles.container}>
       {/* Enhanced Header Section */}
-      <View style={styles.headerContainer}>
+      <Animated.View style={[styles.headerContainer, animatedHeaderStyle]}>
         {/* Top Navigation Bar */}
         <View style={styles.topBar}>
           <Text style={styles.screenTitle}>Profile</Text>
@@ -1117,49 +1178,50 @@ const dispatch = useDispatch();
             </View>
           </View>
         </View>
-      </View>
 
-      {/* Enhanced Tabs */}
-      <View style={styles.tabsContainer}>
-        <View style={styles.tabs}>
-          <TouchableOpacity
-            style={[styles.tabButton, activeTab === 0 && styles.activeTab]}
-            onPress={() => handleTabPress(0)}
-          >
-            <Ionicons 
-              name={activeTab === 0 ? "grid" : "grid-outline"} 
-              size={16} 
-              color={activeTab === 0 ? "#007bff" : "#666"} 
-            />
-            <Text style={[styles.tabText, activeTab === 0 && styles.activeTabText]}>
-              My Posts
-            </Text>
-          </TouchableOpacity>
+        {/* Enhanced Tabs */}
+        <View style={styles.tabsContainer}>
+          <View style={styles.tabs}>
+            <TouchableOpacity
+              style={[styles.tabButton, activeTab === 0 && styles.activeTab]}
+              onPress={() => handleTabPress(0)}
+            >
+              <Ionicons 
+                name={activeTab === 0 ? "grid" : "grid-outline"} 
+                size={16} 
+                color={activeTab === 0 ? "#007bff" : "#666"} 
+              />
+              <Text style={[styles.tabText, activeTab === 0 && styles.activeTabText]}>
+                My Posts
+              </Text>
+            </TouchableOpacity>
 
-          <TouchableOpacity
-            style={[styles.tabButton, activeTab === 1 && styles.activeTab]}
-            onPress={() => handleTabPress(1)}
-          >
-            <Ionicons 
-              name={activeTab === 1 ? "bookmark" : "bookmark-outline"} 
-              size={16} 
-              color={activeTab === 1 ? "#007bff" : "#666"} 
-            />
-            <Text style={[styles.tabText, activeTab === 1 && styles.activeTabText]}>
-              Saved
-            </Text>
-          </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.tabButton, activeTab === 1 && styles.activeTab]}
+              onPress={() => handleTabPress(1)}
+            >
+              <Ionicons 
+                name={activeTab === 1 ? "bookmark" : "bookmark-outline"} 
+                size={16} 
+                color={activeTab === 1 ? "#007bff" : "#666"} 
+              />
+              <Text style={[styles.tabText, activeTab === 1 && styles.activeTabText]}>
+                Saved
+              </Text>
+            </TouchableOpacity>
+          </View>
+          <View style={styles.tabIndicator} />
         </View>
-        <View style={styles.tabIndicator} />
-      </View>
+      </Animated.View>
 
       {/* Posts Carousel */}
-      <PagerView
-        ref={pagerRef}
-        style={styles.pagerView}
-        initialPage={0}
-        onPageSelected={handlePageSelected}
-      >
+      <Animated.View style={[{ flex: 1 }, animatedContentStyle]}>
+        <PagerView
+          ref={pagerRef}
+          style={styles.pagerView}
+          initialPage={0}
+          onPageSelected={handlePageSelected}
+        >
         {/* My Posts Page */}
         <View key="0" style={styles.pageContainer}>
           <FlatList
@@ -1186,6 +1248,28 @@ const dispatch = useDispatch();
                 tintColor="#1e90ff"
               />
             }
+            onScroll={(e) => {
+              const currentOffset = e.nativeEvent.contentOffset.y;
+              const threshold = 50; // Increased threshold for less sensitivity
+              
+              // Only trigger changes if scroll distance is significant
+              if (Math.abs(currentOffset - lastOffset) > threshold) {
+                if (currentOffset > lastOffset && currentOffset > 100 && showHeader) {
+                  // Scrolling down and past certain point - hide header
+                  updateHeaderVisibility(false);
+                } else if (currentOffset < lastOffset && !showHeader) {
+                  // Scrolling up - show header
+                  updateHeaderVisibility(true);
+                }
+                setLastOffset(currentOffset);
+              }
+              
+              // Also show header when at top
+              if (currentOffset <= 0 && !showHeader) {
+                updateHeaderVisibility(true);
+              }
+            }}
+            scrollEventThrottle={16}
           />
         </View>
 
@@ -1215,9 +1299,32 @@ const dispatch = useDispatch();
                 tintColor="#1e90ff"
               />
             }
+            onScroll={(e) => {
+              const currentOffset = e.nativeEvent.contentOffset.y;
+              const threshold = 50; // Increased threshold for less sensitivity
+              
+              // Only trigger changes if scroll distance is significant
+              if (Math.abs(currentOffset - lastOffset) > threshold) {
+                if (currentOffset > lastOffset && currentOffset > 100 && showHeader) {
+                  // Scrolling down and past certain point - hide header
+                  updateHeaderVisibility(false);
+                } else if (currentOffset < lastOffset && !showHeader) {
+                  // Scrolling up - show header
+                  updateHeaderVisibility(true);
+                }
+                setLastOffset(currentOffset);
+              }
+              
+              // Also show header when at top
+              if (currentOffset <= 0 && !showHeader) {
+                updateHeaderVisibility(true);
+              }
+            }}
+            scrollEventThrottle={16}
           />
         </View>
       </PagerView>
+      </Animated.View>
        <Modal visible={commentsModal.visible} animationType="slide" onRequestClose={closeComments}>
         <View style={styles.modalContainer}>
           <View style={styles.modalHeader}>
@@ -1579,6 +1686,13 @@ const dispatch = useDispatch();
           </View>
         </TouchableOpacity>
       </Modal>
+
+      {/* Report Modal */}
+      <ReportModal
+        visible={reportModal.visible}
+        postId={reportModal.postId}
+        onClose={closeReportModal}
+      />
     </View>
   );
 };
@@ -1631,8 +1745,8 @@ function DynamicFeedVideo({ videoUrl }) {
 
   const isLandscape = dimensions.width > dimensions.height;
   const dynamicStyle = isLandscape
-    ? { height: 300 }
-    : { height: 500 };
+    ? { height: 220 }
+    : { height: 350 };
 
   return (
     <Video

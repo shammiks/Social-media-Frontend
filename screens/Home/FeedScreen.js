@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import Swiper from 'react-native-swiper';
 import {
   View, Text, FlatList, Image, TouchableOpacity,
@@ -9,12 +9,19 @@ import { Video } from 'expo-av';
 import { Ionicons, Feather, MaterialIcons } from '@expo/vector-icons';
 import * as Animatable from 'react-native-animatable';
 import { StatusBar } from 'expo-status-bar';
+import Animated, { 
+  useSharedValue, 
+  useAnimatedStyle, 
+  withTiming, 
+  runOnJS 
+} from 'react-native-reanimated';
 import API from '../../utils/api';
 import { useSelector } from 'react-redux';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import * as FileSystem from 'expo-file-system';
 import * as MediaLibrary from 'expo-media-library';
 import CommentComponent from '../../components/Comments/CommentComponent';
+import ReportModal from '../../components/ReportModal';
 
 const { width } = Dimensions.get('window');
 const BASE_URL = '/posts';  // Use relative URLs for API calls
@@ -229,10 +236,20 @@ export default function FeedScreen() {
   const [downloading, setDownloading] = useState(false);
   const [imageLoading, setImageLoading] = useState(true);
   const [lastRefresh, setLastRefresh] = useState(0);
+  const [reportModal, setReportModal] = useState({ visible: false, postId: null, postAuthor: null });
+  const [showBars, setShowBars] = useState(true);
+  const [lastOffset, setLastOffset] = useState(0);
+  const headerTranslateY = useSharedValue(0);
+  const headerOpacity = useSharedValue(1);
   const token = useSelector((state) => state.auth.token);
   const currentUser = useSelector((state) => state.auth.user);
+  const unreadCount = useSelector(state => state.notifications.unreadCount);
 
   const navigation = useNavigation();
+  // Hide/show tab bar when showBars changes
+  useEffect(() => {
+    navigation.getParent()?.setOptions({ tabBarStyle: showBars ? undefined : { display: 'none' } });
+  }, [showBars, navigation]);
 
   useEffect(() => {
     fetchPosts();
@@ -293,6 +310,41 @@ export default function FeedScreen() {
     setLastRefresh(Date.now());
   }
 };
+
+  // Animated header control function
+  const updateHeaderVisibility = useCallback((visible) => {
+    if (visible) {
+      headerTranslateY.value = withTiming(0, { duration: 300 });
+      headerOpacity.value = withTiming(1, { duration: 300 });
+      contentMarginTop.value = withTiming(80, { duration: 300 }); // Header height
+    } else {
+      headerTranslateY.value = withTiming(-100, { duration: 300 });
+      headerOpacity.value = withTiming(0, { duration: 300 });
+      contentMarginTop.value = withTiming(0, { duration: 300 });
+    }
+    runOnJS(setShowBars)(visible);
+  }, [headerTranslateY, headerOpacity, contentMarginTop]);
+
+  // Animated style for header
+  const animatedHeaderStyle = useAnimatedStyle(() => {
+    return {
+      position: 'absolute',
+      top: 0,
+      left: 0,
+      right: 0,
+      zIndex: 1000,
+      transform: [{ translateY: headerTranslateY.value }],
+      opacity: headerOpacity.value,
+    };
+  });
+
+  // Animated style for content to adjust top margin
+  const contentMarginTop = useSharedValue(80); // Header height
+  const animatedContentStyle = useAnimatedStyle(() => {
+    return {
+      marginTop: showBars ? contentMarginTop.value : 0,
+    };
+  });
 
   const handleLike = async (postId) => {
     // Optimistic update - immediately update UI
@@ -379,7 +431,7 @@ export default function FeedScreen() {
         shareMessage += `"${post.content}"\n\n`;
       }
       
-      shareMessage += `Shared from Social App`;
+  shareMessage += `Shared from AspireHub`;
 
       const shareOptions = {
         message: shareMessage,
@@ -592,7 +644,6 @@ export default function FeedScreen() {
           onPress={() => openComments(item.id)}
         >
           <Ionicons name="chatbubble-outline" size={20} color="#444" />
-          <Text style={styles.actionText}>Comment</Text>
         </TouchableOpacity>
         
         <TouchableOpacity 
@@ -600,7 +651,13 @@ export default function FeedScreen() {
           onPress={() => handleShare(item)}
         >
           <Feather name="share" size={20} color="#444" />
-          <Text style={styles.actionText}>Share</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity 
+          style={styles.actionBtn}
+          onPress={() => openReportModal(item.id, item.username)}
+        >
+          <Ionicons name="flag-outline" size={20} color="#666" />
         </TouchableOpacity>
       </View>
     </Animatable.View>
@@ -621,6 +678,14 @@ export default function FeedScreen() {
     setImageLoading(true);
   };
 
+  const openReportModal = (postId, postAuthor) => {
+    setReportModal({ visible: true, postId, postAuthor });
+  };
+
+  const closeReportModal = () => {
+    setReportModal({ visible: false, postId: null, postAuthor: null });
+  };
+
   const downloadImage = async (imageUrl) => {
     try {
       setDownloading(true);
@@ -639,7 +704,7 @@ export default function FeedScreen() {
       if (downloadResult.status === 200) {
         // Save to media library
         const asset = await MediaLibrary.createAssetAsync(downloadResult.uri);
-        await MediaLibrary.createAlbumAsync('SocialApp', asset, false);
+  await MediaLibrary.createAlbumAsync('AspireHub', asset, false);
         
         Alert.alert('Success', 'Image saved to gallery!');
       } else {
@@ -658,30 +723,30 @@ export default function FeedScreen() {
   <StatusBar barStyle="dark-content" />
       
       {/* Header with App Icon and Notification */}
-      <View style={styles.header}>
-        <View style={styles.headerLeft}>
-          <View style={styles.appIconContainer}>
-            <Ionicons name="chatbubbles" size={24} color="#1e90ff" />
+      <Animated.View style={[styles.header, animatedHeaderStyle]}>
+          <View style={styles.headerLeft}>
+            <View style={styles.appIconContainer}>
+              <Image source={require('../../assets/images/aspirehub.png')} style={{ width: 28, height: 28, borderRadius: 6 }} />
+            </View>
+            <Text style={styles.appName}>AspireHub</Text>
           </View>
-          <Text style={styles.appName}>SocialApp</Text>
-        </View>
-        
-        <TouchableOpacity 
-          style={styles.notificationButton}
-          onPress={handleNotificationPress}
-        >
-          <Ionicons name="notifications-outline" size={24} color="#333" />
-          {/* Dot indicator for unread notifications */}
-          {useSelector(state => state.notifications.unreadCount) > 0 && (
-            <View style={styles.notificationDot} />
-          )}
-        </TouchableOpacity>
-      </View>
+          <TouchableOpacity 
+            style={styles.notificationButton}
+            onPress={handleNotificationPress}
+          >
+            <Ionicons name="notifications-outline" size={24} color="#333" />
+            {/* Dot indicator for unread notifications */}
+            {unreadCount > 0 && (
+              <View style={styles.notificationDot} />
+            )}
+          </TouchableOpacity>
+      </Animated.View>
 
       {loading ? (
         <ActivityIndicator size="large" color="#1e90ff" style={{ marginTop: 40 }} />
       ) : (
-        <FlatList
+        <Animated.View style={[{ flex: 1 }, animatedContentStyle]}>
+          <FlatList
           data={posts}
           keyExtractor={(item) => item.id.toString()}
           renderItem={renderPost}
@@ -689,7 +754,30 @@ export default function FeedScreen() {
           showsVerticalScrollIndicator={false}
           refreshing={refreshing}
           onRefresh={fetchPosts}
+          onScroll={e => {
+            const currentOffset = e.nativeEvent.contentOffset.y;
+            const threshold = 50; // Increased threshold for less sensitivity
+            
+            // Only trigger changes if scroll distance is significant
+            if (Math.abs(currentOffset - lastOffset) > threshold) {
+              if (currentOffset > lastOffset && currentOffset > 100 && showBars) {
+                // Scrolling down and past certain point - hide header
+                updateHeaderVisibility(false);
+              } else if (currentOffset < lastOffset && !showBars) {
+                // Scrolling up - show header
+                updateHeaderVisibility(true);
+              }
+              setLastOffset(currentOffset);
+            }
+            
+            // Also show header when at top
+            if (currentOffset <= 0 && !showBars) {
+              updateHeaderVisibility(true);
+            }
+          }}
+          scrollEventThrottle={16}
         />
+        </Animated.View>
       )}
       
       <CommentsModal
@@ -748,6 +836,14 @@ export default function FeedScreen() {
           </View>
         </View>
       </Modal>
+
+      {/* Report Modal */}
+      <ReportModal
+        visible={reportModal.visible}
+        onClose={closeReportModal}
+        postId={reportModal.postId}
+        postAuthor={reportModal.postAuthor}
+      />
     </View>
   );
 }
@@ -848,7 +944,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingVertical: 4,
-    paddingHorizontal: 6,
     minHeight: 28,
     top:5
   },
@@ -1192,8 +1287,8 @@ function DynamicFeedVideo({ videoUrl }) {
 
   const isLandscape = dimensions.width > dimensions.height;
   const dynamicStyle = isLandscape
-    ? { height: 300 }
-    : { height: 500 };
+    ? { height: 220 }
+    : { height: 350 };
 
   return (
     <Video
