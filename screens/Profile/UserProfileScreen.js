@@ -30,7 +30,7 @@ import NotificationIntegrationService from '../../services/NotificationIntegrati
 import { loadChats } from '../../redux/ChatSlice';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import CommentComponent from '../../components/Comments/CommentComponent';
-import ReportModal from '../../components/ReportModal';
+import ReportModal from '../../components/Report/ReportModal';
 
 const { width } = Dimensions.get('window');
 
@@ -1231,7 +1231,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#f8f9fa' 
   },
   listContainer: {
-    paddingHorizontal: 16,
+    paddingHorizontal: 10,
     backgroundColor: '#f8f9fa',
   },
   loaderContainer: { 
@@ -1501,7 +1501,7 @@ const styles = StyleSheet.create({
   card: {
   backgroundColor: '#fff',
   borderRadius: 16,
-  padding: 16,
+  padding: 12,
   marginBottom: 20,
   shadowColor: '#000',
   shadowOffset: { width: 0, height: 2 },
@@ -1837,7 +1837,7 @@ function DynamicFeedVideo({ videoUrl }) {
   const isLandscape = dimensions.width > dimensions.height;
   const dynamicStyle = isLandscape
     ? { height: 220 }
-    : { height: 350 };
+    : { height: 450 };
 
   return (
     <Video

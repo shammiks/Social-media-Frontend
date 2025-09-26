@@ -17,7 +17,7 @@ import { useSelector } from 'react-redux';
 import { Ionicons } from '@expo/vector-icons';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import CommentComponent from '../../components/Comments/CommentComponent';
-import ReportModal from '../../components/ReportModal';
+import ReportModal from '../../components/Report/ReportModal';
 import WarningModal from '../../components/Admin/WarningModal';
 import BanModal from '../../components/Admin/BanModal';
 import { adminAPI } from '../../services/AdminApi';

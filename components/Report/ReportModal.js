@@ -11,7 +11,7 @@ import {
   ActivityIndicator
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import API from '../utils/api';
+import API from '../../utils/api';
 
 const ReportModal = ({ visible, onClose, postId, postAuthor }) => {
   const [selectedReason, setSelectedReason] = useState('');

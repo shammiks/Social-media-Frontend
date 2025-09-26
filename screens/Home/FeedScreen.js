@@ -21,7 +21,7 @@ import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import * as FileSystem from 'expo-file-system';
 import * as MediaLibrary from 'expo-media-library';
 import CommentComponent from '../../components/Comments/CommentComponent';
-import ReportModal from '../../components/ReportModal';
+import ReportModal from '../../components/Report/ReportModal';
 
 const { width } = Dimensions.get('window');
 const BASE_URL = '/posts';  // Use relative URLs for API calls
@@ -850,13 +850,13 @@ export default function FeedScreen() {
 
 const styles = StyleSheet.create({
   container: {
-    padding: 16,
+    paddingHorizontal:8,
     backgroundColor: '#f8f9fa',
   },
   card: {
     backgroundColor: '#fff',
     borderRadius: 16,
-    padding: 16,
+    padding: 10,
     marginBottom: 20,
     shadowColor: '#735e5eff',
     shadowOffset: { width: 0, height: 2 },
@@ -937,6 +937,7 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: '#eee',
     paddingTop: 2,
+    paddingBottom:2,
     marginTop: 0,
     minHeight: 32,
   },
@@ -1288,7 +1289,7 @@ function DynamicFeedVideo({ videoUrl }) {
   const isLandscape = dimensions.width > dimensions.height;
   const dynamicStyle = isLandscape
     ? { height: 220 }
-    : { height: 350 };
+    : { height: 450 };
 
   return (
     <Video

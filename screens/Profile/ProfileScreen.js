@@ -40,7 +40,7 @@ import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { Ionicons, Feather, MaterialIcons } from '@expo/vector-icons';
 import PagerView from 'react-native-pager-view';
 import CommentComponent from '../../components/Comments/CommentComponent';
-import ReportModal from '../../components/ReportModal';
+import ReportModal from '../../components/Report/ReportModal';
 import { API_ENDPOINTS } from '../../utils/apiConfig';
 
 const { width } = Dimensions.get('window');
@@ -1827,7 +1827,7 @@ const styles = StyleSheet.create({
   menuItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 16,
+    paddingHorizontal: 10,
     paddingVertical: 12,
   },
   menuItemText: {
@@ -2022,7 +2022,7 @@ const styles = StyleSheet.create({
   card: {
   backgroundColor: '#fff',
   borderRadius: 16,
-  padding: 16,
+  padding: 10,
   marginBottom: 20,
   shadowColor: '#000',
   shadowOffset: { width: 0, height: 2 },
@@ -2072,7 +2072,7 @@ const styles = StyleSheet.create({
   },
   video: {
     width: '100%',
-    height: 200,
+    height: 450,
     borderRadius: 12,
     marginTop: 8,
   },
